@@ -12,6 +12,12 @@ Only these three files in the target project:
 
 Everything else is optional.
 
+If the target directory is a git repo, Ralph automatically adds these to `.git/info/exclude`:
+- `PRD.md`
+- `TASKS.md`
+- `STATUS.md`
+- `.ralph/`
+
 ## Install once
 ```bash
 ./install.sh

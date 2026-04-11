@@ -23,12 +23,29 @@ USAGE
 log() { printf '[ralph] %s\n' "$*"; }
 err() { printf '[ralph] ERROR: %s\n' "$*" >&2; }
 
+ensure_git_excludes() {
+  local target="$1"
+  if ! git -C "$target" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    return 0
+  fi
+  local exclude_file="$target/.git/info/exclude"
+  mkdir -p "$(dirname "$exclude_file")"
+  touch "$exclude_file"
+  local pattern
+  for pattern in "PRD.md" "TASKS.md" "STATUS.md" ".ralph/"; do
+    if ! grep -qxF "$pattern" "$exclude_file" 2>/dev/null; then
+      printf '%s\n' "$pattern" >> "$exclude_file"
+    fi
+  done
+}
+
 ensure_templates() {
   local target="$1"
   mkdir -p "$target/.ralph"
   [[ -f "$target/PRD.md" ]] || cp "$RALPH_ROOT/templates/PRD.md" "$target/PRD.md"
   [[ -f "$target/TASKS.md" ]] || cp "$RALPH_ROOT/templates/TASKS.md" "$target/TASKS.md"
   [[ -f "$target/STATUS.md" ]] || cp "$RALPH_ROOT/templates/STATUS.md" "$target/STATUS.md"
+  ensure_git_excludes "$target"
 }
 
 package_manager() {
