@@ -23,6 +23,15 @@ USAGE
 log() { printf '[ralph] %s\n' "$*"; }
 err() { printf '[ralph] ERROR: %s\n' "$*" >&2; }
 
+notify() {
+  local title="$1" message="$2"
+  if command -v osascript >/dev/null 2>&1; then
+    osascript -e "display notification \"$message\" with title \"$title\" sound name \"Glass\"" 2>/dev/null || true
+  elif command -v notify-send >/dev/null 2>&1; then
+    notify-send "$title" "$message" 2>/dev/null || true
+  fi
+}
+
 ensure_git_excludes() {
   local target="$1"
   if ! git -C "$target" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
@@ -178,6 +187,7 @@ main_loop() {
       } > "$summary_file"
       update_runner_block "$target/STATUS.md" "$summary_file"
       log "checks passed"
+      notify "Ralph ✓" "Checks passed on loop $loop/$max_loops"
       return 0
     else
       code=$?
@@ -193,11 +203,13 @@ main_loop() {
       update_runner_block "$target/STATUS.md" "$summary_file"
       if [[ $code -eq 2 ]]; then
         log "no check command detected, stopping after one loop"
+        notify "Ralph" "Completed 1 loop (no check command)"
         return 0
       fi
       log "checks failed, continuing"
     fi
   done
   err "max loops reached"
+  notify "Ralph ✗" "Failed after $max_loops loops"
   return 1
 }
