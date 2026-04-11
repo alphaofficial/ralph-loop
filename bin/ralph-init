@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+source "$(cd "$(dirname "$0")" && pwd)/ralph-common.sh"
+
+target="${1:-$(pwd)}"
+ensure_templates "$target"
+printf 'Initialized Ralph files in %s\n' "$target"
