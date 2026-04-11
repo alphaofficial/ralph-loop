@@ -18,9 +18,9 @@ If the target directory is a git repo, Ralph automatically adds these to `.git/i
 - `STATUS.md`
 - `.ralph/`
 
-## Install once
+## Install
 ```bash
-./install.sh
+curl -fsSL https://raw.githubusercontent.com/alphaofficial/ralph-loop/main/install.sh | bash
 ```
 
 ## Requirements
