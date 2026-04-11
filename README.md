@@ -22,6 +22,8 @@ Everything else is optional.
 - `codex` installed and authenticated if you want `ralph-codex`
 - `opencode` installed and authenticated if you want `ralph-opencode`
 
+Note: `ralph-claude` automatically ignores a stale `ANTHROPIC_API_KEY` env var so it uses your logged-in Claude Code session instead.
+
 That gives you:
 - `ralph-init`
 - `ralph-claude`
