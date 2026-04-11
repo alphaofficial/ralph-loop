@@ -1,6 +1,6 @@
 # Ralph Loop
 
-A minimal fresh-context loop for **Claude Code** and **Codex**.
+A minimal fresh-context loop for **Claude Code**, **Codex**, and **OpenCode**.
 
 The whole point is to keep project state in files instead of one giant dying chat.
 
@@ -17,10 +17,16 @@ Everything else is optional.
 ./install.sh
 ```
 
+## Requirements
+- `claude` installed and authenticated if you want `ralph-claude`
+- `codex` installed and authenticated if you want `ralph-codex`
+- `opencode` installed and authenticated if you want `ralph-opencode`
+
 That gives you:
 - `ralph-init`
 - `ralph-claude`
 - `ralph-codex`
+- `ralph-opencode`
 
 ## Basic usage
 Inside any project:
@@ -35,6 +41,7 @@ Or run against another project without copying scripts into it:
 ralph-init ~/code/my-app
 ralph-claude ~/code/my-app
 ralph-codex ~/code/my-app
+ralph-opencode ~/code/my-app
 ```
 
 ## What happens each loop
@@ -60,6 +67,7 @@ You can also override it directly:
 ```bash
 ralph-claude --check "npm run test:unit"
 ralph-codex --check "pnpm test"
+ralph-opencode --check "pytest -q"
 ```
 
 ## Max loops
@@ -76,6 +84,7 @@ Optional:
 ```bash
 RALPH_MODEL=sonnet ralph-claude
 RALPH_MODEL=gpt-5.4 ralph-codex
+RALPH_MODEL=opencode/qwen3.6-plus-free ralph-opencode
 ```
 
 ## Good workflow
@@ -156,6 +165,7 @@ See the generated prompt without invoking the model:
 ```bash
 ralph-claude --dry-run
 ralph-codex --dry-run ~/code/my-app
+ralph-opencode --dry-run ~/code/my-app
 ```
 
 ## Rule of thumb

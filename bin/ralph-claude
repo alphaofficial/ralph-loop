@@ -4,9 +4,11 @@ source "$(cd "$(dirname "$0")" && pwd)/ralph-common.sh"
 
 invoke_provider() {
   local provider="$1" target="$2" prompt_file="$3"
-  local model_args=()
-  if [[ -n "${RALPH_MODEL:-}" ]]; then model_args=(--model "$RALPH_MODEL"); fi
-  (cd "$target" && claude -p --permission-mode acceptEdits --add-dir "$target" "${model_args[@]}" "$(cat "$prompt_file")")
+  if [[ -n "${RALPH_MODEL:-}" ]]; then
+    (cd "$target" && claude -p --permission-mode acceptEdits --add-dir "$target" --model "$RALPH_MODEL" "$(cat "$prompt_file")")
+  else
+    (cd "$target" && claude -p --permission-mode acceptEdits --add-dir "$target" "$(cat "$prompt_file")")
+  fi
 }
 
 target="$(pwd)"

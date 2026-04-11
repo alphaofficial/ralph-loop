@@ -5,9 +5,9 @@ source "$(cd "$(dirname "$0")" && pwd)/ralph-common.sh"
 invoke_provider() {
   local provider="$1" target="$2" prompt_file="$3"
   if [[ -n "${RALPH_MODEL:-}" ]]; then
-    (cd "$target" && codex exec --skip-git-repo-check --sandbox workspace-write --model "$RALPH_MODEL" "$(cat "$prompt_file")")
+    (cd "$target" && opencode run --model "$RALPH_MODEL" "$(cat "$prompt_file")")
   else
-    (cd "$target" && codex exec --skip-git-repo-check --sandbox workspace-write "$(cat "$prompt_file")")
+    (cd "$target" && opencode run "$(cat "$prompt_file")")
   fi
 }
 
@@ -20,9 +20,9 @@ while [[ $# -gt 0 ]]; do
     --max-loops) max_loops="$2"; shift 2 ;;
     --check) check_cmd="$2"; shift 2 ;;
     --dry-run) dry_run=1; shift ;;
-    -h|--help) usage_common "ralph-codex"; exit 0 ;;
+    -h|--help) usage_common "ralph-opencode"; exit 0 ;;
     *) target="$1"; shift ;;
   esac
 done
 check_cmd="${check_cmd:-$(auto_detect_check "$target")}"
-main_loop "codex" "$target" "$max_loops" "$check_cmd" "$dry_run"
+main_loop "opencode" "$target" "$max_loops" "$check_cmd" "$dry_run"
