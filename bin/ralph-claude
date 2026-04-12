@@ -25,4 +25,5 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 check_cmd="${check_cmd:-$(auto_detect_check "$target")}"
+trap 'stop_spinner' EXIT
 main_loop "claude" "$target" "$max_loops" "$check_cmd" "$dry_run"

@@ -191,7 +191,6 @@ run_check() {
 
 main_loop() {
   local provider="$1" target="$2" max_loops="$3" check_cmd="$4" dry_run="$5"
-  trap 'stop_spinner' EXIT
   ensure_templates "$target"
   local loop prompt_file check_out summary_file code
   for ((loop=1; loop<=max_loops; loop++)); do
@@ -203,7 +202,7 @@ main_loop() {
       cat "$prompt_file"
       return 0
     fi
-    start_spinner "claude is thinking"
+    start_spinner "$provider is working"
     invoke_provider "$provider" "$target" "$prompt_file"
     stop_spinner
     summary_file="$target/.ralph/check-summary.txt"
