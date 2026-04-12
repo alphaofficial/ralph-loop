@@ -56,7 +56,11 @@ export async function invokeProvider(
     }
 
     case "opencode": {
-      const args = ["opencode", "run"];
+      const args = [
+        "opencode",
+        "run",
+        "--dangerously-skip-permissions",
+      ];
       if (model) args.push("--model", model);
       args.push(prompt);
 
@@ -71,10 +75,9 @@ export async function invokeProvider(
     case "copilot": {
       const args = [
         "copilot",
-        "--agent=coder",
-        "--allow-all",
-        "--prompt",
+        "-p",
         prompt,
+        "--allow-all",
       ];
       if (model) args.push("--model", model);
 
