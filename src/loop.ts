@@ -82,7 +82,7 @@ export async function mainLoop(
   ensureTemplates(target);
 
   for (let loop = 1; loop <= maxLoops; loop++) {
-    log(`loop ${loop}/${maxLoops} (${provider}) in ${target}`);
+    log(`loop ${loop} (${provider}) in ${target}`);
 
     const promptFile = join(target, ".ralph", `prompt-${provider}.txt`);
     makePrompt(provider, target, checkCmd, loop, promptFile);
@@ -94,7 +94,7 @@ export async function mainLoop(
     }
 
     const stopProvider = startSpinner(
-      `${provider} is working · loop ${loop}/${maxLoops}`
+      `${provider} is working · loop ${loop}`
     );
     try {
       const providerCode = await invokeProvider(
@@ -129,7 +129,7 @@ export async function mainLoop(
       writeFileSync(summaryFile, summary, { mode: 0o600 });
       updateRunnerBlock(join(target, "STATUS.md"), summary);
       log("checks passed");
-      await notify("Ralph ✓", `Checks passed on loop ${loop}/${maxLoops}`);
+      await notify("Ralph ✓", `Checks passed on loop ${loop}`);
       return 0;
     }
 
