@@ -166,6 +166,8 @@ Rules:
 - Do not claim the task is done unless checks pass.
 - Avoid huge refactors unless the PRD requires them.
 - Prefer the smallest change that moves the task forward.
+- Perform a code review after each iteration and fix any issues found before the next iteration.
+- Perform a security review after each iteration and fix any issues found before the next iteration.
 
 Iteration number: ${loop_no}
 Verification command after your run: ${check_cmd:-<none auto-detected>}
