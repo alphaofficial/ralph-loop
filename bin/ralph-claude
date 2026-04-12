@@ -5,9 +5,9 @@ source "$(cd "$(dirname "$0")" && pwd)/ralph-common.sh"
 invoke_provider() {
   local provider="$1" target="$2" prompt_file="$3"
   if [[ -n "${RALPH_MODEL:-}" ]]; then
-    (cd "$target" && env -u ANTHROPIC_API_KEY claude -p --permission-mode acceptEdits --add-dir "$target" --model "$RALPH_MODEL" < "$prompt_file")
+    (cd "$target" && env -u ANTHROPIC_API_KEY claude -p --dangerously-skip-permissions --add-dir "$target" --model "$RALPH_MODEL" < "$prompt_file")
   else
-    (cd "$target" && env -u ANTHROPIC_API_KEY claude -p --permission-mode acceptEdits --add-dir "$target" < "$prompt_file")
+    (cd "$target" && env -u ANTHROPIC_API_KEY claude -p --dangerously-skip-permissions --add-dir "$target" < "$prompt_file")
   fi
 }
 
