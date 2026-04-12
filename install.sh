@@ -27,6 +27,8 @@ if [[ -d "$RALPH_HOME/.git" ]]; then
 fi
 
 mkdir -p "$RALPH_BIN"
+# Remove old binary first — macOS caches Gatekeeper decisions per path
+rm -f "${RALPH_BIN}/ralph"
 curl -fsSL "$URL" -o "${RALPH_BIN}/ralph"
 chmod +x "${RALPH_BIN}/ralph"
 

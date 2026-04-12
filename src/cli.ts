@@ -6,6 +6,9 @@ import { mainLoop } from "./loop";
 import { cleanup, log } from "./ui";
 import type { Provider } from "./providers";
 
+declare const RALPH_VERSION: string;
+const VERSION = typeof RALPH_VERSION !== "undefined" ? RALPH_VERSION : "dev";
+
 const USAGE = `Usage: ralph <command> [target_dir] [options]
 
 Commands:
@@ -80,6 +83,10 @@ function parseArgs() {
       case "--dry-run":
         dryRun = true;
         break;
+      case "-v":
+      case "--version":
+        console.log(VERSION);
+        process.exit(0);
       case "-h":
       case "--help":
         console.log(USAGE);
