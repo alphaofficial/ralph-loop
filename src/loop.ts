@@ -36,10 +36,6 @@ Verification command after your run: ${checkCmd || "<none auto-detected>"}
 Write a one-line commit message describing what you changed to .ralph/commit-msg.txt.
 Follow the project's existing commit message style (check git log if unsure).
 
-IMPORTANT: Do NOT run git add, git commit, or any git commands.
-Do NOT stage PRD.md, TASKS.md, STATUS.md, or anything in .ralph/.
-The ralph runner handles all git operations automatically.
-
 If you need to leave notes for the next fresh instance, put them in STATUS.md.
 `;
   writeFileSync(promptFile, content, { mode: 0o600 });
