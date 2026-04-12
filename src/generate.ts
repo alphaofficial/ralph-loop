@@ -49,7 +49,7 @@ Rules:
 - Add requirement that before each step is done, there are test coverage for new changes, and all tests pass.
 - Add requirement that after all steps are done, it is properly tested or verified before declaring the work complete.
 - Do NOT create any other files.
-- Do NOT run git add or git commit.
+- Do NOT git add or git commit PRD.md, TASKS.md, STATUS.md, or anything in .ralph/.
 `;
 
 export async function generate(
