@@ -44,7 +44,7 @@ export function cleanup() {
   process.stderr.write(`\r${CLEAR_LINE}`);
 }
 
-function escapeAppleScript(s: string): string {
+export function escapeAppleScript(s: string): string {
   return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
