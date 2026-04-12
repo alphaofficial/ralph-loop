@@ -1,12 +1,60 @@
 name: Release
 
+# CalVer release workflow.
+#
+# Tags are formatted as YYYY.MM.DD, with a `.N` suffix for additional releases
+# on the same day (e.g. 2026.04.12, 2026.04.12.1, 2026.04.12.2).
+#
+# Manual only: trigger from the Actions tab when you're ready to cut a release.
+
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
+  tag:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute CalVer tag
+        id: tag
+        run: |
+          set -euo pipefail
+          DATE="$(date -u +%Y.%m.%d)"
+          git fetch --tags --quiet
+          existing=$(git tag --list "${DATE}" "${DATE}.*" | sort -V)
+          if [ -z "$existing" ]; then
+            TAG="$DATE"
+          else
+            n=1
+            while echo "$existing" | grep -qx "${DATE}.${n}"; do
+              n=$((n + 1))
+            done
+            TAG="${DATE}.${n}"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Resolved tag: $TAG"
+
+      - name: Create tag
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ steps.tag.outputs.tag }}" -m "Release ${{ steps.tag.outputs.tag }}"
+          git push origin "${{ steps.tag.outputs.tag }}"
+
   build:
+    needs: tag
     strategy:
       matrix:
         include:
@@ -31,6 +79,8 @@ jobs:
 
       - run: bun install
 
+      - run: bun test
+
       - run: bun build --compile --target=${{ matrix.target }} src/cli.ts --outfile ${{ matrix.artifact }}
 
       - uses: actions/upload-artifact@v4
@@ -39,16 +89,22 @@ jobs:
           path: ${{ matrix.artifact }}
 
   release:
-    needs: build
+    needs: [tag, build]
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
+      - uses: actions/checkout@v4
+
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
           merge-multiple: true
 
-      - uses: softprops/action-gh-release@v2
-        with:
-          files: artifacts/*
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ needs.tag.outputs.tag }}" \
+            --title "${{ needs.tag.outputs.tag }}" \
+            --generate-notes \
+            --latest \
+            artifacts/*
