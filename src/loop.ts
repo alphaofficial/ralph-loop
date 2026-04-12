@@ -33,6 +33,9 @@ Rules:
 Iteration number: ${loopNo}
 Verification command after your run: ${checkCmd || "<none auto-detected>"}
 
+Write a one-line commit message describing what you changed to .ralph/commit-msg.txt.
+Follow the project's existing commit message style (check git log if unsure).
+
 If you need to leave notes for the next fresh instance, put them in STATUS.md.
 `;
   writeFileSync(promptFile, content, { mode: 0o600 });
@@ -98,13 +101,23 @@ async function autoCommit(target: string, loop: number) {
   });
   if (diff.exitCode === 0) return; // nothing staged
 
+  // Use AI-generated commit message if available, fall back to task description
+  const msgFile = join(target, ".ralph", "commit-msg.txt");
+  let msg: string;
+  try {
+    msg = readFileSync(msgFile, "utf-8").trim().split("\n")[0];
+  } catch {
+    msg = "";
+  }
+  if (!msg) msg = `ralph: loop ${loop}`;
+
   const proc = Bun.spawn(
-    ["git", "-C", target, "commit", "-m", `ralph: loop ${loop}`],
+    ["git", "-C", target, "commit", "-m", msg],
     { stdout: "pipe", stderr: "pipe" }
   );
   await proc.exited;
   if (proc.exitCode === 0) {
-    log(`committed · loop ${loop}`);
+    log(`committed: ${msg}`);
   }
 }
 
