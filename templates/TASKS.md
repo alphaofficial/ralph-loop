@@ -1,4 +1,0 @@
-- [ ] inspect the existing code and relevant files
-- [ ] implement the next highest-value change
-- [ ] verify the result
-- [ ] update STATUS.md with what changed and what remains

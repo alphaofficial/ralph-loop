@@ -23,33 +23,31 @@ If the target directory is a git repo, Ralph automatically adds these to `.git/i
 curl -fsSL https://raw.githubusercontent.com/alphaofficial/ralph-loop/main/install.sh | bash
 ```
 
+Installs a single binary to `~/.ralph/bin/ralph`. No runtime dependencies.
+
+To update, run the same command again.
+
 ## Requirements
-- `claude` installed and authenticated if you want `ralph-claude`
-- `codex` installed and authenticated if you want `ralph-codex`
-- `opencode` installed and authenticated if you want `ralph-opencode`
+- `claude` installed and authenticated if you want `ralph claude`
+- `codex` installed and authenticated if you want `ralph codex`
+- `opencode` installed and authenticated if you want `ralph opencode`
 
-Note: `ralph-claude` automatically ignores a stale `ANTHROPIC_API_KEY` env var so it uses your logged-in Claude Code session instead.
-
-That gives you:
-- `ralph-init`
-- `ralph-claude`
-- `ralph-codex`
-- `ralph-opencode`
+Note: `ralph claude` automatically ignores a stale `ANTHROPIC_API_KEY` env var so it uses your logged-in Claude Code session instead.
 
 ## Basic usage
 Inside any project:
 ```bash
-ralph-init
+ralph init
 # edit PRD.md, TASKS.md, STATUS.md
-ralph-claude
+ralph claude
 ```
 
 Or run against another project without copying scripts into it:
 ```bash
-ralph-init ~/code/my-app
-ralph-claude ~/code/my-app
-ralph-codex ~/code/my-app
-ralph-opencode ~/code/my-app
+ralph init ~/code/my-app
+ralph claude ~/code/my-app
+ralph codex ~/code/my-app
+ralph opencode ~/code/my-app
 ```
 
 ## What happens each loop
@@ -73,9 +71,9 @@ The runner auto-detects a check command in this order:
 
 You can also override it directly:
 ```bash
-ralph-claude --check "npm run test:unit"
-ralph-codex --check "pnpm test"
-ralph-opencode --check "pytest -q"
+ralph claude --check "npm run test:unit"
+ralph codex --check "pnpm test"
+ralph opencode --check "pytest -q"
 ```
 
 ## Max loops
@@ -83,24 +81,24 @@ Default is 8.
 
 Override it if needed:
 ```bash
-ralph-claude --max-loops 12
-RALPH_MAX_LOOPS=12 ralph-codex
+ralph claude --max-loops 12
+RALPH_MAX_LOOPS=12 ralph codex
 ```
 
 ## Model overrides
 Optional:
 ```bash
-RALPH_MODEL=sonnet ralph-claude
-RALPH_MODEL=gpt-5.4 ralph-codex
-RALPH_MODEL=opencode/qwen3.6-plus-free ralph-opencode
+RALPH_MODEL=sonnet ralph claude
+RALPH_MODEL=gpt-5.4 ralph codex
+RALPH_MODEL=opencode/qwen3.6-plus-free ralph opencode
 ```
 
 ## Good workflow
 ```bash
 cd ~/code/my-app
-ralph-init
+ralph init
 $EDITOR PRD.md TASKS.md STATUS.md
-ralph-claude
+ralph claude
 ```
 
 Then review the diff, commit, and either rerun or stop.
@@ -165,15 +163,15 @@ pnpm test && pnpm build
 Then:
 ```bash
 chmod +x verify.sh
-ralph-claude
+ralph claude
 ```
 
 ## Dry run
 See the generated prompt without invoking the model:
 ```bash
-ralph-claude --dry-run
-ralph-codex --dry-run ~/code/my-app
-ralph-opencode --dry-run ~/code/my-app
+ralph claude --dry-run
+ralph codex --dry-run ~/code/my-app
+ralph opencode --dry-run ~/code/my-app
 ```
 
 ## Rule of thumb

@@ -1,0 +1,15 @@
+{
+  "name": "ralph-loop",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "ralph": "src/cli.ts"
+  },
+  "scripts": {
+    "dev": "bun run src/cli.ts",
+    "build": "bun build --compile src/cli.ts --outfile ralph"
+  },
+  "devDependencies": {
+    "bun-types": "^1.3.12"
+  }
+}
