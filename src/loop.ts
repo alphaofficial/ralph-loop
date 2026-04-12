@@ -96,6 +96,7 @@ export async function mainLoop(
 
   const loopStart = Date.now();
   let loop = 0;
+  let iterationStart: number;
   while (!allTasksComplete(target)) {
     loop++;
     if (loop > maxLoops) {
@@ -104,8 +105,9 @@ export async function mainLoop(
       await notify("Ralph ✗", `Failed after ${maxLoops} loops (${total})`);
       return 1;
     }
-    const elapsed = formatDuration(Date.now() - loopStart);
-    log(`loop ${loop} (${provider}) ${elapsed} elapsed`);
+    iterationStart = Date.now();
+    const total = formatDuration(Date.now() - loopStart);
+    log(`loop ${loop} (${provider}) · total ${total}`);
 
     const promptFile = join(target, ".ralph", `prompt-${provider}.txt`);
     makePrompt(provider, target, checkCmd, loop, promptFile);
@@ -145,20 +147,21 @@ export async function mainLoop(
 
     const output = first120Lines(checkOut);
 
+    const iterTime = formatDuration(Date.now() - iterationStart!);
     let summary: string;
     if (code === SKIP) {
       summary = "Verification: SKIPPED\n" + output;
-      log("no check command");
+      log(`no check command · ${iterTime}`);
     } else if (code === 0) {
       summary = "Verification: PASS\n";
       if (checkCmd) summary += `Command: ${checkCmd}\n\n`;
       summary += output;
-      log("checks passed");
+      log(`checks passed · ${iterTime}`);
     } else {
       summary = "Verification: FAIL\n";
       if (checkCmd) summary += `Command: ${checkCmd}\n\n`;
       summary += output;
-      log("checks failed");
+      log(`checks failed · ${iterTime}`);
     }
 
     writeFileSync(summaryFile, summary, { mode: 0o600 });
