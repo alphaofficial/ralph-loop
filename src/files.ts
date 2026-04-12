@@ -28,7 +28,7 @@ export function ensureGitExcludes(target: string) {
 }
 
 export function ensureTemplates(target: string) {
-  mkdirSync(join(target, ".ralph"), { recursive: true });
+  mkdirSync(join(target, ".ralph"), { recursive: true, mode: 0o700 });
 
   const files: [string, string][] = [
     [join(target, "PRD.md"), PRD_TEMPLATE],
@@ -58,7 +58,7 @@ export function updateRunnerBlock(statusFile: string, content: string) {
     text = text.replace(pattern, block);
   } else {
     if (text && !text.endsWith("\n")) text += "\n";
-    text += "\n" + block + "\n";
+    text += (text ? "\n" : "") + block + "\n";
   }
 
   writeFileSync(statusFile, text);

@@ -43,7 +43,10 @@ function makefileHasTest(target: string): boolean {
 
 function commandExists(cmd: string): boolean {
   try {
-    const proc = Bun.spawnSync(["which", cmd]);
+    const proc = Bun.spawnSync(["which", cmd], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
     return proc.exitCode === 0;
   } catch {
     return false;

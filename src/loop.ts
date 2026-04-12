@@ -35,7 +35,7 @@ Verification command after your run: ${checkCmd || "<none auto-detected>"}
 
 If you need to leave notes for the next fresh run, put them in STATUS.md, not in chat.
 `;
-  writeFileSync(promptFile, content);
+  writeFileSync(promptFile, content, { mode: 0o600 });
 }
 
 export async function runCheck(
@@ -59,7 +59,7 @@ export async function runCheck(
     new Response(proc.stderr).text(),
   ]);
 
-  writeFileSync(outFile, stdout + stderr);
+  writeFileSync(outFile, stdout + stderr, { mode: 0o600 });
   return await proc.exited;
 }
 
@@ -96,17 +96,20 @@ export async function mainLoop(
     const stopProvider = startSpinner(
       `${provider} is working · loop ${loop}/${maxLoops}`
     );
-    const providerCode = await invokeProvider(
-      provider,
-      target,
-      promptFile,
-      process.env.RALPH_MODEL
-    );
-    stopProvider();
-
-    if (providerCode !== 0) {
-      err(`${provider} exited with code ${providerCode}`);
+    try {
+      const providerCode = await invokeProvider(
+        provider,
+        target,
+        promptFile,
+        process.env.RALPH_MODEL
+      );
+      if (providerCode !== 0) {
+        err(`${provider} exited with code ${providerCode}`);
+      }
+    } catch (e) {
+      err(`failed to run ${provider}: ${e instanceof Error ? e.message : e}`);
     }
+    stopProvider();
 
     const summaryFile = join(target, ".ralph", "check-summary.txt");
     const checkOut = join(target, ".ralph", "check-output.txt");
@@ -123,7 +126,7 @@ export async function mainLoop(
       let summary = "Verification: PASS\n";
       if (checkCmd) summary += `Command: ${checkCmd}\n\n`;
       summary += output;
-      writeFileSync(summaryFile, summary);
+      writeFileSync(summaryFile, summary, { mode: 0o600 });
       updateRunnerBlock(join(target, "STATUS.md"), summary);
       log("checks passed");
       await notify("Ralph ✓", `Checks passed on loop ${loop}/${maxLoops}`);
@@ -134,7 +137,7 @@ export async function mainLoop(
       let summary = "Verification: SKIPPED\n";
       if (checkCmd) summary += `Command: ${checkCmd}\n\n`;
       summary += output;
-      writeFileSync(summaryFile, summary);
+      writeFileSync(summaryFile, summary, { mode: 0o600 });
       updateRunnerBlock(join(target, "STATUS.md"), summary);
       log("no check command detected, stopping after one loop");
       await notify("Ralph", "Completed 1 loop (no check command)");

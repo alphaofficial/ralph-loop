@@ -16,6 +16,7 @@ export function err(msg: string) {
 }
 
 export function startSpinner(msg: string): () => void {
+  if (activeTimer) clearInterval(activeTimer);
   let frame = 0;
   const start = Date.now();
   activeTimer = setInterval(() => {

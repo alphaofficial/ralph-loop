@@ -45,7 +45,7 @@ function parseArgs() {
     command = ALIASES[invoked];
   }
 
-  const args = process.argv.slice(command ? 2 : 2);
+  const args = process.argv.slice(2);
   let i = 0;
 
   // if no command yet, first non-flag arg is the command
@@ -63,8 +63,8 @@ function parseArgs() {
           process.exit(1);
         }
         maxLoops = parseInt(args[++i], 10);
-        if (isNaN(maxLoops)) {
-          console.error("--max-loops must be a number");
+        if (isNaN(maxLoops) || maxLoops < 1) {
+          console.error("--max-loops must be a positive number");
           process.exit(1);
         }
         break;
