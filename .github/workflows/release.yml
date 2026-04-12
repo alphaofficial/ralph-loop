@@ -81,9 +81,14 @@ jobs:
 
       - run: bun test
 
-      - run: bun build --compile --target=${{ matrix.target }} src/cli.ts --outfile ${{ matrix.artifact }}
+      # BUN_NO_CODESIGN_MACHO_BINARY works around oven-sh/bun#29120
+      # (truncated code signature in Bun 1.3.12+). We sign manually after.
+      - name: Compile binary
+        run: bun build --compile --target=${{ matrix.target }} src/cli.ts --outfile ${{ matrix.artifact }}
+        env:
+          BUN_NO_CODESIGN_MACHO_BINARY: "1"
 
-      - name: Ad-hoc sign macOS binary
+      - name: Codesign macOS binary
         if: startsWith(matrix.os, 'macos')
         run: codesign --deep --force --sign - --entitlements entitlements.plist ${{ matrix.artifact }}
 
