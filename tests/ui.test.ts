@@ -1,5 +1,5 @@
 import { describe, expect, test, spyOn, afterEach } from "bun:test";
-import { log, err, startSpinner, cleanup, escapeAppleScript } from "../src/ui";
+import { log, err, startSpinner, cleanup, escapeAppleScript, formatDuration } from "../src/ui";
 
 describe("log", () => {
   test("prints to stdout with [ralph] prefix", () => {
@@ -66,5 +66,25 @@ describe("escapeAppleScript", () => {
 
   test("returns plain string unchanged", () => {
     expect(escapeAppleScript("hello world")).toBe("hello world");
+  });
+});
+
+describe("formatDuration", () => {
+  test("formats seconds", () => {
+    expect(formatDuration(0)).toBe("0s");
+    expect(formatDuration(5000)).toBe("5s");
+    expect(formatDuration(59000)).toBe("59s");
+  });
+
+  test("formats minutes and seconds", () => {
+    expect(formatDuration(60000)).toBe("1m 0s");
+    expect(formatDuration(90000)).toBe("1m 30s");
+    expect(formatDuration(3599000)).toBe("59m 59s");
+  });
+
+  test("formats hours and minutes", () => {
+    expect(formatDuration(3600000)).toBe("1h 0m");
+    expect(formatDuration(5400000)).toBe("1h 30m");
+    expect(formatDuration(7260000)).toBe("2h 1m");
   });
 });

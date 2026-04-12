@@ -11,6 +11,7 @@ const USAGE = `Usage: ralph <command> [target_dir] [options]
 Commands:
   init                  Initialize Ralph files in a project
   claude                Run loop with Claude Code
+  copilot               Run loop with GitHub Copilot CLI
   codex                 Run loop with Codex
   opencode              Run loop with OpenCode
 
@@ -39,6 +40,7 @@ function parseArgs() {
     "ralph-init": "init",
     "ralph-claude": "claude",
     "ralph-codex": "codex",
+    "ralph-copilot": "copilot",
     "ralph-opencode": "opencode",
   };
   if (invoked in ALIASES) {
@@ -116,7 +118,7 @@ async function main() {
     process.exit(0);
   }
 
-  const providers: Provider[] = ["claude", "codex", "opencode"];
+  const providers: Provider[] = ["claude", "copilot", "codex", "opencode"];
   if (!providers.includes(command as Provider)) {
     console.error(`Unknown command: ${command}`);
     console.log(USAGE);

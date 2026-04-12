@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { writeFileSync, readFileSync } from "node:fs";
-import { log, err, startSpinner, notify } from "./ui";
+import { log, err, startSpinner, notify, formatDuration } from "./ui";
 import { ensureTemplates, updateRunnerBlock } from "./files";
 import { invokeProvider, type Provider } from "./providers";
 
@@ -94,15 +94,18 @@ export async function mainLoop(
 ): Promise<number> {
   ensureTemplates(target);
 
+  const loopStart = Date.now();
   let loop = 0;
   while (!allTasksComplete(target)) {
     loop++;
     if (loop > maxLoops) {
-      err("max loops reached");
-      await notify("Ralph ✗", `Failed after ${maxLoops} loops`);
+      const total = formatDuration(Date.now() - loopStart);
+      err(`max loops reached after ${total}`);
+      await notify("Ralph ✗", `Failed after ${maxLoops} loops (${total})`);
       return 1;
     }
-    log(`loop ${loop} (${provider}) in ${target}`);
+    const elapsed = formatDuration(Date.now() - loopStart);
+    log(`loop ${loop} (${provider}) ${elapsed} elapsed`);
 
     const promptFile = join(target, ".ralph", `prompt-${provider}.txt`);
     makePrompt(provider, target, checkCmd, loop, promptFile);
@@ -162,7 +165,8 @@ export async function mainLoop(
     updateRunnerBlock(join(target, "STATUS.md"), summary);
   }
 
-  log("all tasks complete");
-  await notify("Ralph ✓", `All tasks complete after ${loop} loops`);
+  const total = formatDuration(Date.now() - loopStart);
+  log(`all tasks complete in ${loop} loops (${total})`);
+  await notify("Ralph ✓", `All tasks complete in ${total}`);
   return 0;
 }
