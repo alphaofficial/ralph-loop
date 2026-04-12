@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 
-export type Provider = "claude" | "codex" | "opencode";
+export type Provider = "claude" | "codex" | "opencode" | "copilot";
 
 export async function invokeProvider(
   provider: Provider,
@@ -59,6 +59,24 @@ export async function invokeProvider(
       const args = ["opencode", "run"];
       if (model) args.push("--model", model);
       args.push(prompt);
+
+      proc = Bun.spawn(args, {
+        cwd: target,
+        stdout: "inherit",
+        stderr: "inherit",
+      });
+      break;
+    }
+
+    case "copilot": {
+      const args = [
+        "copilot",
+        "--agent=coder",
+        "--allow-all",
+        "--prompt",
+        prompt,
+      ];
+      if (model) args.push("--model", model);
 
       proc = Bun.spawn(args, {
         cwd: target,

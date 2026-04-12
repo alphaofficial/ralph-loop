@@ -1,8 +1,10 @@
-# Ralph Loop
+# Ralph Wiggum Loop
 
-A minimal fresh-context loop for **Claude Code**, **Codex**, and **OpenCode**.
+Ralph is a development methodology based on continuous AI agent loops. As Geoffrey Huntley describes it: "Ralph is a Bash loop" — a simple while true that repeatedly feeds an AI agent a prompt file, allowing it to iteratively improve its work until completion.
 
-The whole point is to keep project state in files instead of one giant dying chat.
+The technique is named after Ralph Wiggum from The Simpsons, embodying the philosophy of persistent iteration despite setbacks.
+
+Supports **Claude Code**, **GitHub Copilot CLI**, **Codex**, and **OpenCode**.
 
 ## What you edit by hand
 Only these three files in the target project:
@@ -29,6 +31,7 @@ To update, run the same command again.
 
 ## Requirements
 - `claude` installed and authenticated if you want `ralph claude`
+- `copilot` installed and authenticated if you want `ralph copilot`
 - `codex` installed and authenticated if you want `ralph codex`
 - `opencode` installed and authenticated if you want `ralph opencode`
 
@@ -46,18 +49,22 @@ Or run against another project without copying scripts into it:
 ```bash
 ralph init ~/code/my-app
 ralph claude ~/code/my-app
+ralph copilot ~/code/my-app
 ralph codex ~/code/my-app
 ralph opencode ~/code/my-app
 ```
 
-## What happens each loop
-1. The runner ensures the three files exist.
-2. It asks the model to read them.
-3. The model does one focused chunk of work.
-4. The model updates `TASKS.md` and `STATUS.md`.
-5. The runner executes a verification command.
-6. The runner writes the verification result back into `STATUS.md`.
-7. If checks fail, it starts a fresh loop.
+## How it works
+```
+while (unchecked tasks in TASKS.md) {
+  spawn fresh AI agent
+  agent picks ONE unchecked task, implements it, checks it off
+  run verification command
+  write result to STATUS.md
+}
+```
+
+Each iteration gets a fresh context — no memory of previous runs. Progress is tracked in files and git history, not in the AI's context window.
 
 ## Verification command
 The runner auto-detects a check command in this order:
@@ -170,6 +177,7 @@ ralph claude
 See the generated prompt without invoking the model:
 ```bash
 ralph claude --dry-run
+ralph copilot --dry-run ~/code/my-app
 ralph codex --dry-run ~/code/my-app
 ralph opencode --dry-run ~/code/my-app
 ```

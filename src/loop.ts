@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { writeFileSync, readFileSync } from "node:fs";
-import { log, err, startSpinner, notify } from "./ui";
+import { log, err, startSpinner, notify, formatDuration } from "./ui";
 import { ensureTemplates, updateRunnerBlock } from "./files";
 import { invokeProvider, type Provider } from "./providers";
 
@@ -94,15 +94,20 @@ export async function mainLoop(
 ): Promise<number> {
   ensureTemplates(target);
 
+  const loopStart = Date.now();
   let loop = 0;
+  let iterationStart: number;
   while (!allTasksComplete(target)) {
     loop++;
     if (loop > maxLoops) {
-      err("max loops reached");
-      await notify("Ralph ✗", `Failed after ${maxLoops} loops`);
+      const total = formatDuration(Date.now() - loopStart);
+      err(`max loops reached after ${total}`);
+      await notify("Ralph ✗", `Failed after ${maxLoops} loops (${total})`);
       return 1;
     }
-    log(`loop ${loop} (${provider}) in ${target}`);
+    iterationStart = Date.now();
+    const total = formatDuration(Date.now() - loopStart);
+    log(`loop ${loop} (${provider}) · total ${total}`);
 
     const promptFile = join(target, ".ralph", `prompt-${provider}.txt`);
     makePrompt(provider, target, checkCmd, loop, promptFile);
@@ -142,27 +147,29 @@ export async function mainLoop(
 
     const output = first120Lines(checkOut);
 
+    const iterTime = formatDuration(Date.now() - iterationStart!);
     let summary: string;
     if (code === SKIP) {
       summary = "Verification: SKIPPED\n" + output;
-      log("no check command");
+      log(`no check command · ${iterTime}`);
     } else if (code === 0) {
       summary = "Verification: PASS\n";
       if (checkCmd) summary += `Command: ${checkCmd}\n\n`;
       summary += output;
-      log("checks passed");
+      log(`checks passed · ${iterTime}`);
     } else {
       summary = "Verification: FAIL\n";
       if (checkCmd) summary += `Command: ${checkCmd}\n\n`;
       summary += output;
-      log("checks failed");
+      log(`checks failed · ${iterTime}`);
     }
 
     writeFileSync(summaryFile, summary, { mode: 0o600 });
     updateRunnerBlock(join(target, "STATUS.md"), summary);
   }
 
-  log("all tasks complete");
-  await notify("Ralph ✓", `All tasks complete after ${loop} loops`);
+  const total = formatDuration(Date.now() - loopStart);
+  log(`all tasks complete in ${loop} loops (${total})`);
+  await notify("Ralph ✓", `All tasks complete in ${total}`);
   return 0;
 }

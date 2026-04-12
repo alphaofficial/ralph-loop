@@ -93,4 +93,16 @@ describe("cli", () => {
     expect(stdout).toContain("Iteration number: 1");
     expect(stdout).toContain("Read these files first:");
   });
+
+  test("--help lists copilot as a provider", async () => {
+    const { stdout } = await run("--help");
+    expect(stdout).toContain("copilot");
+  });
+
+  test("copilot --dry-run works", async () => {
+    await run("init", TMP);
+    const { stdout, exitCode } = await run("copilot", "--dry-run", TMP);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("Iteration number: 1");
+  });
 });
