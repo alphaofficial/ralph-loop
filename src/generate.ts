@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { log, startSpinner } from "./ui";
 import { invokeProvider, type Provider } from "./providers";
 import { ensureGitExcludes } from "./files";
@@ -60,11 +60,6 @@ export async function generate(
 ): Promise<void> {
   mkdirSync(join(target, ".ralph"), { recursive: true, mode: 0o700 });
   ensureGitExcludes(target);
-
-  // Remove existing files so provider writes fresh ones instead of appending
-  for (const file of ["PRD.md", "TASKS.md", "STATUS.md"]) {
-    rmSync(join(target, file), { force: true });
-  }
 
   const promptFile = join(target, ".ralph", "prompt-gen.txt");
   writeFileSync(promptFile, GEN_PROMPT(description), { mode: 0o600 });
