@@ -94,7 +94,14 @@ export async function mainLoop(
 ): Promise<number> {
   ensureTemplates(target);
 
-  for (let loop = 1; loop <= maxLoops; loop++) {
+  let loop = 0;
+  while (!allTasksComplete(target)) {
+    loop++;
+    if (loop > maxLoops) {
+      err("max loops reached");
+      await notify("Ralph ✗", `Failed after ${maxLoops} loops`);
+      return 1;
+    }
     log(`loop ${loop} (${provider}) in ${target}`);
 
     const promptFile = join(target, ".ralph", `prompt-${provider}.txt`);
@@ -135,48 +142,27 @@ export async function mainLoop(
 
     const output = first120Lines(checkOut);
 
+    let summary: string;
     if (code === SKIP) {
-      let summary = "Verification: SKIPPED\n";
-      summary += output;
-      writeFileSync(summaryFile, summary, { mode: 0o600 });
-      updateRunnerBlock(join(target, "STATUS.md"), summary);
-
-      if (allTasksComplete(target)) {
-        log("all tasks complete (no check command)");
-        await notify("Ralph ✓", `All tasks complete after ${loop} loops`);
-        return 0;
-      }
-
-      log("no check command, but unchecked tasks remain — continuing");
-      continue;
-    }
-
-    if (code === 0) {
-      let summary = "Verification: PASS\n";
+      summary = "Verification: SKIPPED\n" + output;
+      log("no check command");
+    } else if (code === 0) {
+      summary = "Verification: PASS\n";
       if (checkCmd) summary += `Command: ${checkCmd}\n\n`;
       summary += output;
-      writeFileSync(summaryFile, summary, { mode: 0o600 });
-      updateRunnerBlock(join(target, "STATUS.md"), summary);
-
-      if (allTasksComplete(target)) {
-        log("all tasks complete, checks passed");
-        await notify("Ralph ✓", `All tasks complete after ${loop} loops`);
-        return 0;
-      }
-
-      log("checks passed, but unchecked tasks remain — continuing");
-      continue;
+      log("checks passed");
+    } else {
+      summary = "Verification: FAIL\n";
+      if (checkCmd) summary += `Command: ${checkCmd}\n\n`;
+      summary += output;
+      log("checks failed");
     }
 
-    let summary = "Verification: FAIL\n";
-    if (checkCmd) summary += `Command: ${checkCmd}\n\n`;
-    summary += output;
-    writeFileSync(summaryFile, summary);
+    writeFileSync(summaryFile, summary, { mode: 0o600 });
     updateRunnerBlock(join(target, "STATUS.md"), summary);
-    log("checks failed, continuing");
   }
 
-  err("max loops reached");
-  await notify("Ralph ✗", `Failed after ${maxLoops} loops`);
-  return 1;
+  log("all tasks complete");
+  await notify("Ralph ✓", `All tasks complete after ${loop} loops`);
+  return 0;
 }
