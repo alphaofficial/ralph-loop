@@ -56,7 +56,11 @@ export async function invokeProvider(
     }
 
     case "opencode": {
-      const args = ["opencode", "run"];
+      const args = [
+        "opencode",
+        "run",
+        "--dangerously-skip-permissions",
+      ];
       if (model) args.push("--model", model);
       args.push(prompt);
 
