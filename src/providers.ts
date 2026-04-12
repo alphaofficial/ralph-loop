@@ -71,10 +71,9 @@ export async function invokeProvider(
     case "copilot": {
       const args = [
         "copilot",
-        "--agent=coder",
-        "--allow-all",
-        "--prompt",
+        "-p",
         prompt,
+        "--allow-all",
       ];
       if (model) args.push("--model", model);
 
