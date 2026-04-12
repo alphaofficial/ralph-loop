@@ -33,6 +33,9 @@ Rules:
 Iteration number: ${loopNo}
 Verification command after your run: ${checkCmd || "<none auto-detected>"}
 
+Write a one-line commit message describing what you changed to .ralph/commit-msg.txt.
+Follow the project's existing commit message style (check git log if unsure).
+
 If you need to leave notes for the next fresh instance, put them in STATUS.md.
 `;
   writeFileSync(promptFile, content, { mode: 0o600 });
@@ -73,6 +76,48 @@ export function allTasksComplete(target: string): boolean {
     return tasks.every((line) => line.startsWith("- [x]"));
   } catch {
     return true;
+  }
+}
+
+async function autoCommit(target: string, loop: number) {
+  // Only commit if target is a git repo
+  const check = Bun.spawnSync(["git", "-C", target, "rev-parse", "--is-inside-work-tree"], {
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  if (check.exitCode !== 0) return;
+
+  // Stage all changes
+  const add = Bun.spawnSync(["git", "-C", target, "add", "-A"], {
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  if (add.exitCode !== 0) return;
+
+  // Check if there's anything to commit
+  const diff = Bun.spawnSync(["git", "-C", target, "diff", "--cached", "--quiet"], {
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  if (diff.exitCode === 0) return; // nothing staged
+
+  // Use AI-generated commit message if available, fall back to task description
+  const msgFile = join(target, ".ralph", "commit-msg.txt");
+  let msg: string;
+  try {
+    msg = readFileSync(msgFile, "utf-8").trim().split("\n")[0];
+  } catch {
+    msg = "";
+  }
+  if (!msg) msg = `ralph: loop ${loop}`;
+
+  const proc = Bun.spawn(
+    ["git", "-C", target, "commit", "-m", msg],
+    { stdout: "pipe", stderr: "pipe" }
+  );
+  await proc.exited;
+  if (proc.exitCode === 0) {
+    log(`committed: ${msg}`);
   }
 }
 
@@ -166,6 +211,11 @@ export async function mainLoop(
 
     writeFileSync(summaryFile, summary, { mode: 0o600 });
     updateRunnerBlock(join(target, "STATUS.md"), summary);
+
+    // Only commit when checks pass — failed iterations retry on next loop
+    if (code === 0 || code === SKIP) {
+      await autoCommit(target, loop);
+    }
   }
 
   const total = formatDuration(Date.now() - loopStart);
