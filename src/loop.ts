@@ -199,8 +199,10 @@ export async function mainLoop(
     writeFileSync(summaryFile, summary, { mode: 0o600 });
     updateRunnerBlock(join(target, "STATUS.md"), summary);
 
-    // Commit after each iteration — git is the memory layer
-    await autoCommit(target, loop);
+    // Only commit when checks pass — failed iterations retry on next loop
+    if (code === 0 || code === SKIP) {
+      await autoCommit(target, loop);
+    }
   }
 
   const total = formatDuration(Date.now() - loopStart);
