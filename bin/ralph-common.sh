@@ -23,6 +23,31 @@ USAGE
 log() { printf '[ralph] %s\n' "$*"; }
 err() { printf '[ralph] ERROR: %s\n' "$*" >&2; }
 
+_spinner_pid=""
+start_spinner() {
+  local msg="${1:-working}"
+  (
+    local frames=('⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏')
+    local i=0 elapsed=0
+    while true; do
+      printf '\r[ralph] %s %s (%ds)  ' "${frames[$i]}" "$msg" "$elapsed" >&2
+      i=$(( (i + 1) % ${#frames[@]} ))
+      sleep 1
+      elapsed=$((elapsed + 1))
+    done
+  ) &
+  _spinner_pid=$!
+}
+
+stop_spinner() {
+  if [[ -n "${_spinner_pid:-}" ]]; then
+    kill "$_spinner_pid" 2>/dev/null || true
+    wait "$_spinner_pid" 2>/dev/null || true
+    _spinner_pid=""
+    printf '\r\033[K' >&2
+  fi
+}
+
 notify() {
   local title="$1" message="$2"
   if command -v osascript >/dev/null 2>&1; then
@@ -164,6 +189,7 @@ run_check() {
 
 main_loop() {
   local provider="$1" target="$2" max_loops="$3" check_cmd="$4" dry_run="$5"
+  trap 'stop_spinner' EXIT
   ensure_templates "$target"
   local loop prompt_file check_out summary_file code
   for ((loop=1; loop<=max_loops; loop++)); do
@@ -175,10 +201,14 @@ main_loop() {
       cat "$prompt_file"
       return 0
     fi
+    start_spinner "claude is thinking"
     invoke_provider "$provider" "$target" "$prompt_file"
+    stop_spinner
     summary_file="$target/.ralph/check-summary.txt"
     check_out="$target/.ralph/check-output.txt"
+    start_spinner "running checks"
     if run_check "$target" "$check_cmd" "$check_out"; then
+      stop_spinner
       code=0
       {
         printf 'Verification: PASS\n'
@@ -190,6 +220,7 @@ main_loop() {
       notify "Ralph ✓" "Checks passed on loop $loop/$max_loops"
       return 0
     else
+      stop_spinner
       code=$?
       {
         if [[ $code -eq 2 ]]; then
