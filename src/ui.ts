@@ -44,12 +44,6 @@ export function cleanup() {
   process.stderr.write(`\r${CLEAR_LINE}`);
 }
 
-export function notify(title: string, message: string) {
-  // Terminal bell — triggers dock bounce / tab badge in the user's terminal
-  // Works in every terminal, no permissions needed, points to the right window
-  process.stderr.write("\x07");
-  log(`${title} — ${message}`);
-}
 
 export function formatDuration(ms: number): string {
   const s = Math.floor(ms / 1000);

@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { writeFileSync, readFileSync } from "node:fs";
-import { log, err, startSpinner, notify, formatDuration } from "./ui";
+import { log, err, startSpinner, formatDuration } from "./ui";
 import { ensureTemplates, updateRunnerBlock } from "./files";
 import { invokeProvider, type Provider } from "./providers";
 
@@ -147,7 +147,6 @@ export async function mainLoop(
     if (loop > maxLoops) {
       const total = formatDuration(Date.now() - loopStart);
       err(`max loops reached after ${total}`);
-      notify("Ralph ✗", `Failed after ${maxLoops} loops (${total})`);
       return 1;
     }
     iterationStart = Date.now();
@@ -220,6 +219,5 @@ export async function mainLoop(
 
   const total = formatDuration(Date.now() - loopStart);
   log(`all tasks complete in ${loop} loops (${total})`);
-  notify("Ralph ✓", `All tasks complete in ${total}`);
   return 0;
 }
