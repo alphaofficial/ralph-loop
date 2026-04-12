@@ -11,41 +11,43 @@ export function makePrompt(
   loopNo: number,
   promptFile: string
 ) {
-  const content = `You are running a Ralph loop iteration inside this project.
+  const content = `You are running one iteration of a Ralph loop inside this project.
 
 Read these files first:
 - PRD.md
 - TASKS.md
 - STATUS.md
 
+CRITICAL: You must complete exactly ONE unchecked task from TASKS.md, then stop.
+Do NOT attempt multiple tasks. Another fresh instance will handle the next task.
+
 Rules:
-- Do one focused iteration only.
-- Make real file changes in the project when useful.
-- Update TASKS.md to reflect progress.
-- Update STATUS.md with what changed, what failed, and the next best step.
+- Pick the FIRST unchecked task (- [ ]) from TASKS.md.
+- Implement that single task only.
+- Check off that one task (- [x]) in TASKS.md.
+- Update STATUS.md with what you changed and what the next task should be.
 - Keep STATUS.md concrete, short, and truthful.
-- Do not claim the task is done unless checks pass.
-- Avoid huge refactors unless the PRD requires them.
+- Do not touch other unchecked tasks.
 - Prefer the smallest change that moves the task forward.
-- Perform a code review after each iteration and fix any issues found before the next iteration.
-- Perform a security review after each iteration and fix any issues found before the next iteration.
 
 Iteration number: ${loopNo}
 Verification command after your run: ${checkCmd || "<none auto-detected>"}
 
-If you need to leave notes for the next fresh run, put them in STATUS.md, not in chat.
+If you need to leave notes for the next fresh instance, put them in STATUS.md.
 `;
   writeFileSync(promptFile, content, { mode: 0o600 });
 }
+
+export const SKIP = Symbol("skip");
 
 export async function runCheck(
   target: string,
   checkCmd: string,
   outFile: string
-): Promise<number> {
+): Promise<number | typeof SKIP> {
   if (!checkCmd) {
     writeFileSync(outFile, "No verification command detected.\n");
-    return 2;
+    return SKIP;
   }
 
   const proc = Bun.spawn(["bash", "-lc", checkCmd], {
@@ -61,6 +63,17 @@ export async function runCheck(
 
   writeFileSync(outFile, stdout + stderr, { mode: 0o600 });
   return await proc.exited;
+}
+
+export function allTasksComplete(target: string): boolean {
+  try {
+    const content = readFileSync(join(target, "TASKS.md"), "utf-8");
+    const tasks = content.split("\n").filter((line) => /^- \[[ x]\]/.test(line));
+    if (tasks.length === 0) return true;
+    return tasks.every((line) => line.startsWith("- [x]"));
+  } catch {
+    return true;
+  }
 }
 
 function first120Lines(file: string): string {
@@ -81,8 +94,15 @@ export async function mainLoop(
 ): Promise<number> {
   ensureTemplates(target);
 
-  for (let loop = 1; loop <= maxLoops; loop++) {
-    log(`loop ${loop}/${maxLoops} (${provider}) in ${target}`);
+  let loop = 0;
+  while (!allTasksComplete(target)) {
+    loop++;
+    if (loop > maxLoops) {
+      err("max loops reached");
+      await notify("Ralph ✗", `Failed after ${maxLoops} loops`);
+      return 1;
+    }
+    log(`loop ${loop} (${provider}) in ${target}`);
 
     const promptFile = join(target, ".ralph", `prompt-${provider}.txt`);
     makePrompt(provider, target, checkCmd, loop, promptFile);
@@ -94,7 +114,7 @@ export async function mainLoop(
     }
 
     const stopProvider = startSpinner(
-      `${provider} is working · loop ${loop}/${maxLoops}`
+      `${provider} is working · loop ${loop}`
     );
     try {
       const providerCode = await invokeProvider(
@@ -122,37 +142,27 @@ export async function mainLoop(
 
     const output = first120Lines(checkOut);
 
-    if (code === 0) {
-      let summary = "Verification: PASS\n";
+    let summary: string;
+    if (code === SKIP) {
+      summary = "Verification: SKIPPED\n" + output;
+      log("no check command");
+    } else if (code === 0) {
+      summary = "Verification: PASS\n";
       if (checkCmd) summary += `Command: ${checkCmd}\n\n`;
       summary += output;
-      writeFileSync(summaryFile, summary, { mode: 0o600 });
-      updateRunnerBlock(join(target, "STATUS.md"), summary);
       log("checks passed");
-      await notify("Ralph ✓", `Checks passed on loop ${loop}/${maxLoops}`);
-      return 0;
-    }
-
-    if (code === 2) {
-      let summary = "Verification: SKIPPED\n";
+    } else {
+      summary = "Verification: FAIL\n";
       if (checkCmd) summary += `Command: ${checkCmd}\n\n`;
       summary += output;
-      writeFileSync(summaryFile, summary, { mode: 0o600 });
-      updateRunnerBlock(join(target, "STATUS.md"), summary);
-      log("no check command detected, stopping after one loop");
-      await notify("Ralph", "Completed 1 loop (no check command)");
-      return 0;
+      log("checks failed");
     }
 
-    let summary = "Verification: FAIL\n";
-    if (checkCmd) summary += `Command: ${checkCmd}\n\n`;
-    summary += output;
-    writeFileSync(summaryFile, summary);
+    writeFileSync(summaryFile, summary, { mode: 0o600 });
     updateRunnerBlock(join(target, "STATUS.md"), summary);
-    log("checks failed, continuing");
   }
 
-  err("max loops reached");
-  await notify("Ralph ✗", `Failed after ${maxLoops} loops`);
-  return 1;
+  log("all tasks complete");
+  await notify("Ralph ✓", `All tasks complete after ${loop} loops`);
+  return 0;
 }

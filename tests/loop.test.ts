@@ -1,7 +1,7 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
-import { mkdirSync, readFileSync, rmSync, existsSync, statSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { makePrompt, runCheck } from "../src/loop";
+import { makePrompt, runCheck, allTasksComplete, SKIP } from "../src/loop";
 
 const TMP = join(import.meta.dir, ".tmp-loop");
 
@@ -42,15 +42,11 @@ describe("makePrompt", () => {
     expect(content).toContain("<none auto-detected>");
   });
 
-  test("includes required instructions", () => {
+  test("includes pick ONE task instruction", () => {
     const file = join(TMP, ".ralph", "prompt-claude.txt");
     makePrompt("claude", TMP, "", 1, file);
     const content = readFileSync(file, "utf-8");
-    expect(content).toContain("Read these files first:");
-    expect(content).toContain("PRD.md");
-    expect(content).toContain("TASKS.md");
-    expect(content).toContain("STATUS.md");
-    expect(content).toContain("Do one focused iteration only");
+    expect(content).toContain("exactly ONE unchecked task from TASKS.md");
   });
 
   test("writes file with 0o600 permissions", () => {
@@ -75,11 +71,18 @@ describe("runCheck", () => {
     expect(code).toBe(1);
   });
 
-  test("returns 2 for empty check command", async () => {
+  test("returns SKIP for empty check command", async () => {
     const outFile = join(TMP, ".ralph", "check-output.txt");
     const code = await runCheck(TMP, "", outFile);
-    expect(code).toBe(2);
+    expect(code).toBe(SKIP);
     expect(readFileSync(outFile, "utf-8")).toContain("No verification command detected");
+  });
+
+  test("returns 2 when command exits with 2 (not SKIP)", async () => {
+    const outFile = join(TMP, ".ralph", "check-output.txt");
+    const code = await runCheck(TMP, "exit 2", outFile);
+    expect(code).toBe(2);
+    expect(code).not.toBe(SKIP);
   });
 
   test("captures stderr", async () => {
@@ -93,5 +96,53 @@ describe("runCheck", () => {
     await runCheck(TMP, "echo test", outFile);
     const mode = statSync(outFile).mode & 0o777;
     expect(mode).toBe(0o600);
+  });
+});
+
+describe("allTasksComplete", () => {
+  test("returns true when all tasks checked", () => {
+    writeFileSync(
+      join(TMP, "TASKS.md"),
+      "- [x] task one\n- [x] task two\n- [x] task three\n"
+    );
+    expect(allTasksComplete(TMP)).toBe(true);
+  });
+
+  test("returns false when some tasks unchecked", () => {
+    writeFileSync(
+      join(TMP, "TASKS.md"),
+      "- [x] task one\n- [ ] task two\n- [x] task three\n"
+    );
+    expect(allTasksComplete(TMP)).toBe(false);
+  });
+
+  test("returns false when all tasks unchecked", () => {
+    writeFileSync(
+      join(TMP, "TASKS.md"),
+      "- [ ] task one\n- [ ] task two\n"
+    );
+    expect(allTasksComplete(TMP)).toBe(false);
+  });
+
+  test("returns true when no tasks exist", () => {
+    writeFileSync(join(TMP, "TASKS.md"), "# Tasks\n\nNo tasks yet.\n");
+    expect(allTasksComplete(TMP)).toBe(true);
+  });
+
+  test("returns true when file is empty", () => {
+    writeFileSync(join(TMP, "TASKS.md"), "");
+    expect(allTasksComplete(TMP)).toBe(true);
+  });
+
+  test("returns true when file does not exist", () => {
+    expect(allTasksComplete(TMP)).toBe(true);
+  });
+
+  test("ignores non-task lines", () => {
+    writeFileSync(
+      join(TMP, "TASKS.md"),
+      "# Tasks\n\nSome description.\n\n- [x] the only task\n"
+    );
+    expect(allTasksComplete(TMP)).toBe(true);
   });
 });
