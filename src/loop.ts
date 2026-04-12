@@ -147,7 +147,7 @@ export async function mainLoop(
     if (loop > maxLoops) {
       const total = formatDuration(Date.now() - loopStart);
       err(`max loops reached after ${total}`);
-      await notify("Ralph ✗", `Failed after ${maxLoops} loops (${total})`);
+      notify("Ralph ✗", `Failed after ${maxLoops} loops (${total})`);
       return 1;
     }
     iterationStart = Date.now();
@@ -220,6 +220,6 @@ export async function mainLoop(
 
   const total = formatDuration(Date.now() - loopStart);
   log(`all tasks complete in ${loop} loops (${total})`);
-  await notify("Ralph ✓", `All tasks complete in ${total}`);
+  notify("Ralph ✓", `All tasks complete in ${total}`);
   return 0;
 }
