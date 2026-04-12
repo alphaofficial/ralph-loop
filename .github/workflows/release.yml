@@ -85,7 +85,7 @@ jobs:
 
       - name: Ad-hoc sign macOS binary
         if: startsWith(matrix.os, 'macos')
-        run: codesign --entitlements entitlements.plist --force --sign - ${{ matrix.artifact }}
+        run: codesign --deep --force --sign - --entitlements entitlements.plist ${{ matrix.artifact }}
 
       - uses: actions/upload-artifact@v5
         with:
