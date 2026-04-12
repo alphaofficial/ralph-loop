@@ -1,7 +1,7 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { makePrompt, runCheck, allTasksComplete } from "../src/loop";
+import { makePrompt, runCheck, allTasksComplete, SKIP } from "../src/loop";
 
 const TMP = join(import.meta.dir, ".tmp-loop");
 
@@ -71,11 +71,18 @@ describe("runCheck", () => {
     expect(code).toBe(1);
   });
 
-  test("returns 2 for empty check command", async () => {
+  test("returns SKIP for empty check command", async () => {
     const outFile = join(TMP, ".ralph", "check-output.txt");
     const code = await runCheck(TMP, "", outFile);
-    expect(code).toBe(2);
+    expect(code).toBe(SKIP);
     expect(readFileSync(outFile, "utf-8")).toContain("No verification command detected");
+  });
+
+  test("returns 2 when command exits with 2 (not SKIP)", async () => {
+    const outFile = join(TMP, ".ralph", "check-output.txt");
+    const code = await runCheck(TMP, "exit 2", outFile);
+    expect(code).toBe(2);
+    expect(code).not.toBe(SKIP);
   });
 
   test("captures stderr", async () => {

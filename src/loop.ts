@@ -39,14 +39,16 @@ If you need to leave notes for the next fresh run, put them in STATUS.md, not in
   writeFileSync(promptFile, content, { mode: 0o600 });
 }
 
+export const SKIP = Symbol("skip");
+
 export async function runCheck(
   target: string,
   checkCmd: string,
   outFile: string
-): Promise<number> {
+): Promise<number | typeof SKIP> {
   if (!checkCmd) {
     writeFileSync(outFile, "No verification command detected.\n");
-    return 2;
+    return SKIP;
   }
 
   const proc = Bun.spawn(["bash", "-lc", checkCmd], {
@@ -134,6 +136,22 @@ export async function mainLoop(
 
     const output = first120Lines(checkOut);
 
+    if (code === SKIP) {
+      let summary = "Verification: SKIPPED\n";
+      summary += output;
+      writeFileSync(summaryFile, summary, { mode: 0o600 });
+      updateRunnerBlock(join(target, "STATUS.md"), summary);
+
+      if (allTasksComplete(target)) {
+        log("all tasks complete (no check command)");
+        await notify("Ralph ✓", `All tasks complete after ${loop} loops`);
+        return 0;
+      }
+
+      log("no check command, but unchecked tasks remain — continuing");
+      continue;
+    }
+
     if (code === 0) {
       let summary = "Verification: PASS\n";
       if (checkCmd) summary += `Command: ${checkCmd}\n\n`;
@@ -148,23 +166,6 @@ export async function mainLoop(
       }
 
       log("checks passed, but unchecked tasks remain — continuing");
-      continue;
-    }
-
-    if (code === 2) {
-      let summary = "Verification: SKIPPED\n";
-      if (checkCmd) summary += `Command: ${checkCmd}\n\n`;
-      summary += output;
-      writeFileSync(summaryFile, summary, { mode: 0o600 });
-      updateRunnerBlock(join(target, "STATUS.md"), summary);
-
-      if (allTasksComplete(target)) {
-        log("all tasks complete (no check command)");
-        await notify("Ralph ✓", `All tasks complete after ${loop} loops`);
-        return 0;
-      }
-
-      log("no check command, but unchecked tasks remain — continuing");
       continue;
     }
 
