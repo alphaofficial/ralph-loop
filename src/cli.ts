@@ -3,7 +3,7 @@ import { basename, resolve } from "node:path";
 import { ensureTemplates } from "./files";
 import { autoDetectCheck } from "./detect";
 import { mainLoop } from "./loop";
-import { cleanup } from "./ui";
+import { cleanup, log } from "./ui";
 import type { Provider } from "./providers";
 
 const USAGE = `Usage: ralph <command> [target_dir] [options]
@@ -97,12 +97,15 @@ function parseArgs() {
 // Signal handling for clean exit
 process.on("SIGINT", () => {
   cleanup();
+  log("interrupted");
   process.exit(130);
 });
 process.on("SIGTERM", () => {
   cleanup();
   process.exit(143);
 });
+// Suppress Bun's "Execution error" on unhandled rejections from killed subprocesses
+process.on("unhandledRejection", () => {});
 
 async function main() {
   const { command, target, maxLoops, checkCmd, dryRun } = parseArgs();
