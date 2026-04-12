@@ -20,8 +20,9 @@ Read these files first:
 
 Rules:
 - Do one focused iteration only.
+- Pick ONE unchecked task from TASKS.md, implement it, and mark it done.
 - Make real file changes in the project when useful.
-- Update TASKS.md to reflect progress.
+- Update TASKS.md to reflect progress (check off completed tasks).
 - Update STATUS.md with what changed, what failed, and the next best step.
 - Keep STATUS.md concrete, short, and truthful.
 - Do not claim the task is done unless checks pass.
@@ -63,6 +64,17 @@ export async function runCheck(
   return await proc.exited;
 }
 
+export function allTasksComplete(target: string): boolean {
+  try {
+    const content = readFileSync(join(target, "TASKS.md"), "utf-8");
+    const tasks = content.split("\n").filter((line) => /^- \[[ x]\]/.test(line));
+    if (tasks.length === 0) return true;
+    return tasks.every((line) => line.startsWith("- [x]"));
+  } catch {
+    return true;
+  }
+}
+
 function first120Lines(file: string): string {
   try {
     const content = readFileSync(file, "utf-8");
@@ -82,7 +94,7 @@ export async function mainLoop(
   ensureTemplates(target);
 
   for (let loop = 1; loop <= maxLoops; loop++) {
-    log(`loop ${loop}/${maxLoops} (${provider}) in ${target}`);
+    log(`loop ${loop} (${provider}) in ${target}`);
 
     const promptFile = join(target, ".ralph", `prompt-${provider}.txt`);
     makePrompt(provider, target, checkCmd, loop, promptFile);
@@ -94,7 +106,7 @@ export async function mainLoop(
     }
 
     const stopProvider = startSpinner(
-      `${provider} is working · loop ${loop}/${maxLoops}`
+      `${provider} is working · loop ${loop}`
     );
     try {
       const providerCode = await invokeProvider(
@@ -128,9 +140,15 @@ export async function mainLoop(
       summary += output;
       writeFileSync(summaryFile, summary, { mode: 0o600 });
       updateRunnerBlock(join(target, "STATUS.md"), summary);
-      log("checks passed");
-      await notify("Ralph ✓", `Checks passed on loop ${loop}/${maxLoops}`);
-      return 0;
+
+      if (allTasksComplete(target)) {
+        log("all tasks complete, checks passed");
+        await notify("Ralph ✓", `All tasks complete after ${loop} loops`);
+        return 0;
+      }
+
+      log("checks passed, but unchecked tasks remain — continuing");
+      continue;
     }
 
     if (code === 2) {
@@ -139,9 +157,15 @@ export async function mainLoop(
       summary += output;
       writeFileSync(summaryFile, summary, { mode: 0o600 });
       updateRunnerBlock(join(target, "STATUS.md"), summary);
-      log("no check command detected, stopping after one loop");
-      await notify("Ralph", "Completed 1 loop (no check command)");
-      return 0;
+
+      if (allTasksComplete(target)) {
+        log("all tasks complete (no check command)");
+        await notify("Ralph ✓", `All tasks complete after ${loop} loops`);
+        return 0;
+      }
+
+      log("no check command, but unchecked tasks remain — continuing");
+      continue;
     }
 
     let summary = "Verification: FAIL\n";
