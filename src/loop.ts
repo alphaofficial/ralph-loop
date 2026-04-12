@@ -36,7 +36,7 @@ Verification command after your run: ${checkCmd || "<none auto-detected>"}
 Write a one-line commit message describing what you changed to .ralph/commit-msg.txt.
 Follow the project's existing commit message style (check git log if unsure).
 
-IMPORTANT: Do NOT git add or git commit PRD.md, TASKS.md, STATUS.md, or anything in .ralph/. These are managed by the ralph runner.
+IMPORTANT: NEVER run git write commands (git add, git commit, git push, git stash, git reset, git checkout, git revert). Only git read commands are permitted (git log, git diff, git show, git status, git blame). The ralph runner handles all commits automatically.
 
 If you need to leave notes for the next fresh instance, put them in STATUS.md.
 `;
