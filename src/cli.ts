@@ -3,6 +3,7 @@ import { basename, resolve } from "node:path";
 import { ensureTemplates } from "./files";
 import { autoDetectCheck } from "./detect";
 import { mainLoop } from "./loop";
+import { generate } from "./generate";
 import { cleanup, log } from "./ui";
 import type { Provider } from "./providers";
 
@@ -12,7 +13,8 @@ const VERSION = typeof RALPH_VERSION !== "undefined" ? RALPH_VERSION : "dev";
 const USAGE = `Usage: ralph <command> [target_dir] [options]
 
 Commands:
-  init                  Initialize Ralph files in a project
+  init                  Initialize Ralph files with templates
+  gen <provider> "desc" Generate PRD, TASKS, STATUS from a description
   claude                Run loop with Claude Code
   copilot               Run loop with GitHub Copilot CLI
   codex                 Run loop with Codex
@@ -129,6 +131,30 @@ async function main() {
   }
 
   const providers: Provider[] = ["claude", "copilot", "codex", "opencode"];
+
+  if (command === "gen") {
+    // ralph gen <provider> "description" [target]
+    const args = process.argv.slice(3);
+    if (args.length < 2) {
+      console.error('Usage: ralph gen <provider> "description" [target_dir]');
+      process.exit(1);
+    }
+    const genProvider = args[0] as Provider;
+    if (!providers.includes(genProvider)) {
+      console.error(`Unknown provider: ${genProvider}`);
+      process.exit(1);
+    }
+    const description = args[1];
+    const genTarget = args[2] ? resolve(args[2]) : process.cwd();
+    try {
+      await generate(genProvider, genTarget, description, process.env.RALPH_MODEL);
+    } catch (e) {
+      console.error(e instanceof Error ? e.message : e);
+      process.exit(1);
+    }
+    process.exit(0);
+  }
+
   if (!providers.includes(command as Provider)) {
     console.error(`Unknown command: ${command}`);
     console.log(USAGE);
