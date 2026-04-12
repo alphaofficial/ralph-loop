@@ -83,6 +83,10 @@ jobs:
 
       - run: bun build --compile --target=${{ matrix.target }} src/cli.ts --outfile ${{ matrix.artifact }}
 
+      - name: Ad-hoc sign macOS binary
+        if: startsWith(matrix.os, 'macos')
+        run: codesign --entitlements entitlements.plist --force --sign - ${{ matrix.artifact }}
+
       - uses: actions/upload-artifact@v5
         with:
           name: ${{ matrix.artifact }}

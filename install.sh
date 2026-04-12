@@ -30,9 +30,9 @@ mkdir -p "$RALPH_BIN"
 curl -fsSL "$URL" -o "${RALPH_BIN}/ralph"
 chmod +x "${RALPH_BIN}/ralph"
 
-# Remove macOS quarantine flag so Gatekeeper doesn't block the binary
+# Remove macOS quarantine/provenance flags so Gatekeeper doesn't block the binary
 if [[ "$OS" == "darwin" ]]; then
-  xattr -d com.apple.quarantine "${RALPH_BIN}/ralph" 2>/dev/null || true
+  xattr -cr "${RALPH_BIN}/ralph" 2>/dev/null || true
 fi
 
 printf 'Installed ralph to %s/ralph\n' "$RALPH_BIN"
