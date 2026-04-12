@@ -1,0 +1,96 @@
+import { describe, expect, test, beforeEach, afterEach } from "bun:test";
+import { mkdirSync, rmSync, existsSync } from "node:fs";
+import { join } from "node:path";
+
+const TMP = join(import.meta.dir, ".tmp-cli");
+const CLI = join(import.meta.dir, "..", "src", "cli.ts");
+
+async function run(...args: string[]): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+  const proc = Bun.spawn(["bun", "run", CLI, ...args], {
+    stdout: "pipe",
+    stderr: "pipe",
+    env: { ...process.env, RALPH_CHECK_CMD: undefined, RALPH_MAX_LOOPS: undefined },
+  });
+  const [stdout, stderr] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+  ]);
+  const exitCode = await proc.exited;
+  return { stdout, stderr, exitCode };
+}
+
+beforeEach(() => {
+  rmSync(TMP, { recursive: true, force: true });
+  mkdirSync(TMP, { recursive: true });
+});
+
+afterEach(() => {
+  rmSync(TMP, { recursive: true, force: true });
+});
+
+describe("cli", () => {
+  test("--help exits 0 with usage", async () => {
+    const { stdout, exitCode } = await run("--help");
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("Usage: ralph");
+  });
+
+  test("no args exits 1 with usage", async () => {
+    const { stdout, exitCode } = await run();
+    expect(exitCode).toBe(1);
+    expect(stdout).toContain("Usage: ralph");
+  });
+
+  test("unknown command exits 1", async () => {
+    const { stderr, exitCode } = await run("foobar");
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("Unknown command: foobar");
+  });
+
+  test("init creates files", async () => {
+    const { stdout, exitCode } = await run("init", TMP);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("Initialized");
+    expect(existsSync(join(TMP, "PRD.md"))).toBe(true);
+    expect(existsSync(join(TMP, "TASKS.md"))).toBe(true);
+    expect(existsSync(join(TMP, "STATUS.md"))).toBe(true);
+  });
+
+  test("--max-loops without value exits 1", async () => {
+    const { stderr, exitCode } = await run("claude", "--max-loops");
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("--max-loops requires a value");
+  });
+
+  test("--max-loops 0 exits 1", async () => {
+    const { stderr, exitCode } = await run("claude", "--max-loops", "0");
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("--max-loops must be a positive number");
+  });
+
+  test("--max-loops -1 exits 1", async () => {
+    const { stderr, exitCode } = await run("claude", "--max-loops", "-1");
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("--max-loops must be a positive number");
+  });
+
+  test("--max-loops abc exits 1", async () => {
+    const { stderr, exitCode } = await run("claude", "--max-loops", "abc");
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("--max-loops must be a positive number");
+  });
+
+  test("--check without value exits 1", async () => {
+    const { stderr, exitCode } = await run("claude", "--check");
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("--check requires a value");
+  });
+
+  test("--dry-run prints prompt without invoking", async () => {
+    await run("init", TMP);
+    const { stdout, exitCode } = await run("claude", "--dry-run", TMP);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("Iteration number: 1");
+    expect(stdout).toContain("Read these files first:");
+  });
+});
