@@ -76,6 +76,8 @@ jobs:
       - uses: actions/checkout@v5
 
       - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.2.22"
 
       - run: bun install
 
@@ -83,7 +85,7 @@ jobs:
 
       - run: bun build --compile --target=${{ matrix.target }} src/cli.ts --outfile ${{ matrix.artifact }}
 
-      - name: Ad-hoc sign macOS binary
+      - name: Codesign macOS binary
         if: startsWith(matrix.os, 'macos')
         run: codesign --deep --force --sign - --entitlements entitlements.plist ${{ matrix.artifact }}
 
