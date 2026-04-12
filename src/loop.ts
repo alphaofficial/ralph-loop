@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { writeFileSync, readFileSync } from "node:fs";
-import { log, err, startSpinner, notify, formatDuration } from "./ui";
+import { log, err, startSpinner, formatDuration } from "./ui";
 import { ensureTemplates, updateRunnerBlock } from "./files";
 import { invokeProvider, type Provider } from "./providers";
 
@@ -141,18 +141,13 @@ export async function mainLoop(
 
   const loopStart = Date.now();
   let loop = 0;
+  let retries = 0;
   let iterationStart: number;
   while (!allTasksComplete(target)) {
     loop++;
-    if (loop > maxLoops) {
-      const total = formatDuration(Date.now() - loopStart);
-      err(`max loops reached after ${total}`);
-      await notify("Ralph ✗", `Failed after ${maxLoops} loops (${total})`);
-      return 1;
-    }
     iterationStart = Date.now();
     const total = formatDuration(Date.now() - loopStart);
-    log(`loop ${loop} (${provider}) · total ${total}`);
+    log(`loop ${loop} (${provider}) · total ${total}${retries > 0 ? ` · retry ${retries}/${maxLoops}` : ""}`);
 
     const promptFile = join(target, ".ralph", `prompt-${provider}.txt`);
     makePrompt(provider, target, checkCmd, loop, promptFile);
@@ -215,11 +210,18 @@ export async function mainLoop(
     // Only commit when checks pass — failed iterations retry on next loop
     if (code === 0 || code === SKIP) {
       await autoCommit(target, loop);
+      retries = 0; // reset on success
+    } else {
+      retries++;
+      if (retries >= maxLoops) {
+        const total = formatDuration(Date.now() - loopStart);
+        err(`${retries} consecutive failures on the same task — giving up after ${total}`);
+        return 1;
+      }
     }
   }
 
   const total = formatDuration(Date.now() - loopStart);
   log(`all tasks complete in ${loop} loops (${total})`);
-  await notify("Ralph ✓", `All tasks complete in ${total}`);
   return 0;
 }

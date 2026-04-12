@@ -1,5 +1,5 @@
 import { describe, expect, test, spyOn, afterEach } from "bun:test";
-import { log, err, startSpinner, cleanup, escapeAppleScript, formatDuration } from "../src/ui";
+import { log, err, startSpinner, cleanup, formatDuration } from "../src/ui";
 
 describe("log", () => {
   test("prints to stdout with [ralph] prefix", () => {
@@ -51,23 +51,6 @@ describe("cleanup", () => {
   });
 });
 
-describe("escapeAppleScript", () => {
-  test("escapes double quotes", () => {
-    expect(escapeAppleScript('say "hi"')).toBe('say \\"hi\\"');
-  });
-
-  test("escapes backslashes", () => {
-    expect(escapeAppleScript("path\\to\\file")).toBe("path\\\\to\\\\file");
-  });
-
-  test("escapes both", () => {
-    expect(escapeAppleScript('"\\test"')).toBe('\\"\\\\test\\"');
-  });
-
-  test("returns plain string unchanged", () => {
-    expect(escapeAppleScript("hello world")).toBe("hello world");
-  });
-});
 
 describe("formatDuration", () => {
   test("formats seconds", () => {
