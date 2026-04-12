@@ -20,6 +20,12 @@ URL="https://github.com/${REPO}/releases/latest/download/${BINARY}"
 
 printf 'Installing Ralph (%s-%s)...\n' "$OS" "$ARCH"
 
+# Clean up old git-based install
+if [[ -d "$RALPH_HOME/.git" ]]; then
+  printf 'Cleaning up old installation...\n'
+  rm -rf "$RALPH_HOME"
+fi
+
 mkdir -p "$RALPH_BIN"
 curl -fsSL "$URL" -o "${RALPH_BIN}/ralph"
 chmod +x "${RALPH_BIN}/ralph"
