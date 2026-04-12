@@ -45,7 +45,7 @@ Rules:
 - Be specific and actionable, not vague.
 - Tasks should be small enough for one AI iteration each.
 - Look at the existing codebase to inform requirements and constraints.
-- Write all three files to the project root directory.
+- Write all three files to the project root directory. Overwrite them completely if they already exist.
 - Add requirement that before each step is done, there are test coverage for new changes, and all tests pass.
 - Add requirement that after all steps are done, it is properly tested or verified before declaring the work complete.
 - Do NOT create any other files.
