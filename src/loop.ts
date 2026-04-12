@@ -11,30 +11,29 @@ export function makePrompt(
   loopNo: number,
   promptFile: string
 ) {
-  const content = `You are running a Ralph loop iteration inside this project.
+  const content = `You are running one iteration of a Ralph loop inside this project.
 
 Read these files first:
 - PRD.md
 - TASKS.md
 - STATUS.md
 
+CRITICAL: You must complete exactly ONE unchecked task from TASKS.md, then stop.
+Do NOT attempt multiple tasks. Another fresh instance will handle the next task.
+
 Rules:
-- Do one focused iteration only.
-- Pick ONE unchecked task from TASKS.md, implement it, and mark it done.
-- Make real file changes in the project when useful.
-- Update TASKS.md to reflect progress (check off completed tasks).
-- Update STATUS.md with what changed, what failed, and the next best step.
+- Pick the FIRST unchecked task (- [ ]) from TASKS.md.
+- Implement that single task only.
+- Check off that one task (- [x]) in TASKS.md.
+- Update STATUS.md with what you changed and what the next task should be.
 - Keep STATUS.md concrete, short, and truthful.
-- Do not claim the task is done unless checks pass.
-- Avoid huge refactors unless the PRD requires them.
+- Do not touch other unchecked tasks.
 - Prefer the smallest change that moves the task forward.
-- Perform a code review after each iteration and fix any issues found before the next iteration.
-- Perform a security review after each iteration and fix any issues found before the next iteration.
 
 Iteration number: ${loopNo}
 Verification command after your run: ${checkCmd || "<none auto-detected>"}
 
-If you need to leave notes for the next fresh run, put them in STATUS.md, not in chat.
+If you need to leave notes for the next fresh instance, put them in STATUS.md.
 `;
   writeFileSync(promptFile, content, { mode: 0o600 });
 }

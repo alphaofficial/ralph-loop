@@ -46,7 +46,7 @@ describe("makePrompt", () => {
     const file = join(TMP, ".ralph", "prompt-claude.txt");
     makePrompt("claude", TMP, "", 1, file);
     const content = readFileSync(file, "utf-8");
-    expect(content).toContain("Pick ONE unchecked task from TASKS.md");
+    expect(content).toContain("exactly ONE unchecked task from TASKS.md");
   });
 
   test("writes file with 0o600 permissions", () => {
