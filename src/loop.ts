@@ -76,6 +76,38 @@ export function allTasksComplete(target: string): boolean {
   }
 }
 
+async function autoCommit(target: string, loop: number) {
+  // Only commit if target is a git repo
+  const check = Bun.spawnSync(["git", "-C", target, "rev-parse", "--is-inside-work-tree"], {
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  if (check.exitCode !== 0) return;
+
+  // Stage all changes
+  const add = Bun.spawnSync(["git", "-C", target, "add", "-A"], {
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  if (add.exitCode !== 0) return;
+
+  // Check if there's anything to commit
+  const diff = Bun.spawnSync(["git", "-C", target, "diff", "--cached", "--quiet"], {
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  if (diff.exitCode === 0) return; // nothing staged
+
+  const proc = Bun.spawn(
+    ["git", "-C", target, "commit", "-m", `ralph: loop ${loop}`],
+    { stdout: "pipe", stderr: "pipe" }
+  );
+  await proc.exited;
+  if (proc.exitCode === 0) {
+    log(`committed · loop ${loop}`);
+  }
+}
+
 function first120Lines(file: string): string {
   try {
     const content = readFileSync(file, "utf-8");
@@ -166,6 +198,9 @@ export async function mainLoop(
 
     writeFileSync(summaryFile, summary, { mode: 0o600 });
     updateRunnerBlock(join(target, "STATUS.md"), summary);
+
+    // Commit after each iteration — git is the memory layer
+    await autoCommit(target, loop);
   }
 
   const total = formatDuration(Date.now() - loopStart);
