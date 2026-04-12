@@ -61,7 +61,7 @@ jobs:
           - os: macos-latest
             target: bun-darwin-arm64
             artifact: ralph-darwin-arm64
-          - os: macos-latest
+          - os: macos-13
             target: bun-darwin-x64
             artifact: ralph-darwin-x64
           - os: ubuntu-latest
