@@ -5,7 +5,11 @@ import { autoDetectCheck } from "./detect";
 import { mainLoop } from "./loop";
 import { generate } from "./generate";
 import { cleanup, log } from "./ui";
-import type { Provider } from "./providers";
+import {
+  GENERATION_PROVIDERS,
+  LOOP_PROVIDERS,
+  type Provider,
+} from "./providers";
 
 declare const RALPH_VERSION: string;
 const VERSION = typeof RALPH_VERSION !== "undefined" ? RALPH_VERSION : "dev";
@@ -132,9 +136,6 @@ async function main() {
     process.exit(0);
   }
 
-  const loopProviders = ["claude", "copilot", "codex", "gemini", "opencode"] as const;
-  const genProviders: Provider[] = ["claude", "copilot", "codex", "opencode"];
-
   if (command === "gen") {
     // ralph gen <provider> "description" [target]
     const args = process.argv.slice(3);
@@ -143,7 +144,7 @@ async function main() {
       process.exit(1);
     }
     const genProvider = args[0] as Provider;
-    if (!genProviders.includes(genProvider)) {
+    if (!GENERATION_PROVIDERS.includes(genProvider)) {
       console.error(`Unknown provider: ${genProvider}`);
       process.exit(1);
     }
@@ -158,7 +159,7 @@ async function main() {
     process.exit(0);
   }
 
-  if (!loopProviders.includes(command as (typeof loopProviders)[number])) {
+  if (!LOOP_PROVIDERS.includes(command as Provider)) {
     console.error(`Unknown command: ${command}`);
     console.log(USAGE);
     process.exit(1);

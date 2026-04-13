@@ -1,6 +1,9 @@
 import { readFileSync } from "node:fs";
 
-export type Provider = "claude" | "codex" | "opencode" | "copilot";
+export const LOOP_PROVIDERS = ["claude", "copilot", "codex", "gemini", "opencode"] as const;
+export const GENERATION_PROVIDERS = ["claude", "copilot", "codex", "gemini", "opencode"] as const;
+
+export type Provider = (typeof LOOP_PROVIDERS)[number];
 
 export async function invokeProvider(
   provider: Provider,

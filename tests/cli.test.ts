@@ -117,4 +117,10 @@ describe("cli", () => {
     expect(exitCode).toBe(0);
     expect(stdout).toContain("Iteration number: 1");
   });
+
+  test("gen gemini passes provider validation", async () => {
+    const { stderr, exitCode } = await run("gen", "gemini", "Build a Gemini flow", TMP);
+    expect(exitCode).toBe(1);
+    expect(stderr).not.toContain("Unknown provider: gemini");
+  });
 });
