@@ -1,5 +1,8 @@
-import { describe, expect, test } from "bun:test";
-import { GENERATION_PROVIDERS, LOOP_PROVIDERS } from "../src/providers";
+import { describe, expect, spyOn, test } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { GENERATION_PROVIDERS, LOOP_PROVIDERS, invokeProvider } from "../src/providers";
 
 describe("providers", () => {
   test("generation providers include gemini", () => {
@@ -12,5 +15,56 @@ describe("providers", () => {
 
   test("generation and loop providers stay aligned", () => {
     expect(GENERATION_PROVIDERS).toEqual(LOOP_PROVIDERS);
+  });
+
+  test("invokeProvider uses Gemini CLI prompt mode", async () => {
+    const target = mkdtempSync(join(tmpdir(), "ralph-providers-"));
+    const promptFile = join(target, "prompt.txt");
+    writeFileSync(promptFile, "Use Gemini to build this.");
+
+    const spawn = spyOn(Bun, "spawn").mockReturnValue({
+      exited: Promise.resolve(0),
+    } as ReturnType<typeof Bun.spawn>);
+
+    try {
+      const code = await invokeProvider("gemini", target, promptFile);
+
+      expect(code).toBe(0);
+      expect(spawn).toHaveBeenCalledTimes(1);
+      expect(spawn.mock.calls[0]?.[0]).toEqual(["gemini", "-p", "Use Gemini to build this."]);
+      expect(spawn.mock.calls[0]?.[1]).toMatchObject({
+        cwd: target,
+        stdout: "inherit",
+        stderr: "inherit",
+      });
+    } finally {
+      spawn.mockRestore();
+      rmSync(target, { recursive: true, force: true });
+    }
+  });
+
+  test("invokeProvider passes Gemini model overrides", async () => {
+    const target = mkdtempSync(join(tmpdir(), "ralph-providers-"));
+    const promptFile = join(target, "prompt.txt");
+    writeFileSync(promptFile, "Use Gemini to build this.");
+
+    const spawn = spyOn(Bun, "spawn").mockReturnValue({
+      exited: Promise.resolve(0),
+    } as ReturnType<typeof Bun.spawn>);
+
+    try {
+      await invokeProvider("gemini", target, promptFile, "gemini-2.5-pro");
+
+      expect(spawn.mock.calls[0]?.[0]).toEqual([
+        "gemini",
+        "-p",
+        "Use Gemini to build this.",
+        "--model",
+        "gemini-2.5-pro",
+      ]);
+    } finally {
+      spawn.mockRestore();
+      rmSync(target, { recursive: true, force: true });
+    }
   });
 });

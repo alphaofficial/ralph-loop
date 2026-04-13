@@ -91,6 +91,18 @@ export async function invokeProvider(
       });
       break;
     }
+
+    case "gemini": {
+      const args = ["gemini", "-p", prompt];
+      if (model) args.push("--model", model);
+
+      proc = Bun.spawn(args, {
+        cwd: target,
+        stdout: "inherit",
+        stderr: "inherit",
+      });
+      break;
+    }
   }
 
   return await proc.exited;
