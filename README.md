@@ -4,7 +4,7 @@ Ralph is a development methodology based on continuous AI agent loops. As Geoffr
 
 The technique is named after Ralph Wiggum from The Simpsons, embodying the philosophy of persistent iteration despite setbacks.
 
-Supports **Claude Code**, **GitHub Copilot CLI**, **Codex**, and **OpenCode**.
+Supports **Claude Code**, **GitHub Copilot CLI**, **Codex**, **Gemini CLI**, and **OpenCode**.
 
 ## What you edit by hand
 Only these three files in the target project:
@@ -33,6 +33,7 @@ To update, run the same command again.
 - `claude` installed and authenticated if you want `ralph claude`
 - `copilot` installed and authenticated if you want `ralph copilot`
 - `codex` installed and authenticated if you want `ralph codex`
+- `gemini` installed and authenticated if you want `ralph gemini`
 - `opencode` installed and authenticated if you want `ralph opencode`
 
 Note: `ralph claude` automatically ignores a stale `ANTHROPIC_API_KEY` env var so it uses your logged-in Claude Code session instead.
@@ -43,6 +44,7 @@ Inside any project:
 ralph init
 # edit PRD.md, TASKS.md, STATUS.md
 ralph claude
+ralph gen gemini "Add Stripe subscriptions"
 ```
 
 Or run against another project without copying scripts into it:
@@ -51,6 +53,7 @@ ralph init ~/code/my-app
 ralph claude ~/code/my-app
 ralph copilot ~/code/my-app
 ralph codex ~/code/my-app
+ralph gemini ~/code/my-app
 ralph opencode ~/code/my-app
 ```
 
@@ -80,6 +83,7 @@ You can also override it directly:
 ```bash
 ralph claude --check "npm run test:unit"
 ralph codex --check "pnpm test"
+ralph gemini --check "bun test"
 ralph opencode --check "pytest -q"
 ```
 
@@ -97,6 +101,7 @@ Optional:
 ```bash
 RALPH_MODEL=sonnet ralph claude
 RALPH_MODEL=gpt-5.4 ralph codex
+RALPH_MODEL=gemini-2.5-pro ralph gemini
 RALPH_MODEL=opencode/qwen3.6-plus-free ralph opencode
 ```
 
@@ -179,6 +184,7 @@ See the generated prompt without invoking the model:
 ralph claude --dry-run
 ralph copilot --dry-run ~/code/my-app
 ralph codex --dry-run ~/code/my-app
+ralph gemini --dry-run ~/code/my-app
 ralph opencode --dry-run ~/code/my-app
 ```
 
