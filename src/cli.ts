@@ -18,6 +18,7 @@ Commands:
   claude                Run loop with Claude Code
   copilot               Run loop with GitHub Copilot CLI
   codex                 Run loop with Codex
+  gemini                Run loop with Gemini CLI
   opencode              Run loop with OpenCode
 
 Options:
@@ -46,6 +47,7 @@ function parseArgs() {
     "ralph-claude": "claude",
     "ralph-codex": "codex",
     "ralph-copilot": "copilot",
+    "ralph-gemini": "gemini",
     "ralph-opencode": "opencode",
   };
   if (invoked in ALIASES) {
@@ -130,7 +132,8 @@ async function main() {
     process.exit(0);
   }
 
-  const providers: Provider[] = ["claude", "copilot", "codex", "opencode"];
+  const loopProviders = ["claude", "copilot", "codex", "gemini", "opencode"] as const;
+  const genProviders: Provider[] = ["claude", "copilot", "codex", "opencode"];
 
   if (command === "gen") {
     // ralph gen <provider> "description" [target]
@@ -140,7 +143,7 @@ async function main() {
       process.exit(1);
     }
     const genProvider = args[0] as Provider;
-    if (!providers.includes(genProvider)) {
+    if (!genProviders.includes(genProvider)) {
       console.error(`Unknown provider: ${genProvider}`);
       process.exit(1);
     }
@@ -155,7 +158,7 @@ async function main() {
     process.exit(0);
   }
 
-  if (!providers.includes(command as Provider)) {
+  if (!loopProviders.includes(command as (typeof loopProviders)[number])) {
     console.error(`Unknown command: ${command}`);
     console.log(USAGE);
     process.exit(1);

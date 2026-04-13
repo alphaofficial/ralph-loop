@@ -99,9 +99,21 @@ describe("cli", () => {
     expect(stdout).toContain("copilot");
   });
 
+  test("--help lists gemini as a provider", async () => {
+    const { stdout } = await run("--help");
+    expect(stdout).toContain("gemini");
+  });
+
   test("copilot --dry-run works", async () => {
     await run("init", TMP);
     const { stdout, exitCode } = await run("copilot", "--dry-run", TMP);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("Iteration number: 1");
+  });
+
+  test("gemini --dry-run works", async () => {
+    await run("init", TMP);
+    const { stdout, exitCode } = await run("gemini", "--dry-run", TMP);
     expect(exitCode).toBe(0);
     expect(stdout).toContain("Iteration number: 1");
   });
