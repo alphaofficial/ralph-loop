@@ -2,6 +2,13 @@ import { readFileSync } from "node:fs";
 
 export type Provider = "claude" | "codex" | "opencode" | "copilot";
 
+export function buildOpenCodeArgs(prompt: string, model?: string): string[] {
+  const args = ["opencode"];
+  if (model) args.push("--model", model);
+  args.push(prompt);
+  return args;
+}
+
 export async function invokeProvider(
   provider: Provider,
   target: string,
@@ -56,11 +63,7 @@ export async function invokeProvider(
     }
 
     case "opencode": {
-      const args = [
-        "opencode",
-      ];
-      if (model) args.push("--model", model);
-      args.push(prompt);
+      const args = buildOpenCodeArgs(prompt, model);
 
       proc = Bun.spawn(args, {
         cwd: target,
