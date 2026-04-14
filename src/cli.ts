@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
-import { basename, resolve } from "node:path";
+import { basename, resolve, join } from "node:path";
+import { existsSync, rmSync } from "node:fs";
 import { ensureTemplates } from "./files";
 import { autoDetectCheck } from "./detect";
 import { mainLoop } from "./loop";
@@ -131,8 +132,13 @@ async function main() {
   }
 
   if (command === "init") {
+    const ralphDir = join(target, ".ralph");
+    const reinit = existsSync(ralphDir);
+    rmSync(ralphDir, { recursive: true, force: true });
     ensureTemplates(target);
-    console.log(`Initialized Ralph files in ${target}`);
+    console.log(
+      `${reinit ? "Reinitialized" : "Initialized"} Ralph files in ${target}`
+    );
     process.exit(0);
   }
 

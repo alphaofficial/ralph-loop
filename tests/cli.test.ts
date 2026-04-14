@@ -50,10 +50,24 @@ describe("cli", () => {
   test("init creates files", async () => {
     const { stdout, exitCode } = await run("init", TMP);
     expect(exitCode).toBe(0);
-    expect(stdout).toContain("Initialized");
+    expect(stdout).toMatch(/^Initialized Ralph files in/);
     expect(existsSync(join(TMP, "PRD.md"))).toBe(true);
     expect(existsSync(join(TMP, "TASKS.md"))).toBe(true);
     expect(existsSync(join(TMP, "STATUS.md"))).toBe(true);
+  });
+
+  test("re-running init wipes .ralph scratch dir, preserves edited PRD/TASKS/STATUS, and reports 'Reinitialized'", async () => {
+    const { writeFileSync, readFileSync } = await import("node:fs");
+    mkdirSync(join(TMP, ".ralph"), { recursive: true });
+    writeFileSync(join(TMP, ".ralph", "stale.txt"), "old");
+    writeFileSync(join(TMP, "PRD.md"), "custom prd");
+
+    const { stdout, exitCode } = await run("init", TMP);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("Reinitialized Ralph files in");
+    expect(existsSync(join(TMP, ".ralph", "stale.txt"))).toBe(false);
+    expect(existsSync(join(TMP, ".ralph"))).toBe(true);
+    expect(readFileSync(join(TMP, "PRD.md"), "utf-8")).toBe("custom prd");
   });
 
   test("--max-loops without value exits 1", async () => {
