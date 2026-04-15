@@ -28,7 +28,6 @@ Rules:
 - Update STATUS.md with what you changed and what the next task should be.
 - Keep STATUS.md concrete, short, and truthful.
 - Do not touch other unchecked tasks.
-- Prefer the smallest change that moves the task forward.
 
 Iteration number: ${loopNo}
 Verification command after your run: ${checkCmd || "<none auto-detected>"}
