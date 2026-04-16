@@ -44,6 +44,7 @@ Generate exactly three files. Write each file to disk:
 Rules:
 - Be specific and actionable, not vague.
 - Tasks should be small enough for one AI iteration each.
+- Task should be a flat list, not a hierarchy.
 - Look at the existing codebase to inform requirements and constraints.
 - Write all three files to the project root directory. Overwrite them completely if they already exist.
 - Add requirement that before each step is done, there are test coverage for new changes, and all tests pass.
