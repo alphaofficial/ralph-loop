@@ -82,6 +82,21 @@ describe("ensureGitExcludes", () => {
     const prdMatches = content.split("PRD.md").length - 1;
     expect(prdMatches).toBe(1);
   });
+
+  test("appends on new line when file lacks trailing newline", () => {
+    Bun.spawnSync(["git", "init", TMP]);
+    const excludePath = join(TMP, ".git", "info", "exclude");
+    // Create file with content that doesn't end in newline
+    writeFileSync(excludePath, "existing-pattern");
+    ensureGitExcludes(TMP);
+    const content = readFileSync(excludePath, "utf-8");
+    // Each pattern should be on its own line
+    expect(content).toContain("existing-pattern\nPRD.md");
+    expect(content).toContain("PRD.md\n");
+    expect(content).toContain("TASKS.md\n");
+    expect(content).toContain("STATUS.md\n");
+    expect(content).toContain(".ralph/\n");
+  });
 });
 
 describe("updateRunnerBlock", () => {

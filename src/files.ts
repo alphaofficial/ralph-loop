@@ -20,9 +20,11 @@ export function ensureGitExcludes(target: string) {
   const content = readFileSync(excludeFile, "utf-8");
   const lines = content.split("\n");
 
+  let needsNewline = content.length > 0 && !content.endsWith("\n");
   for (const pattern of ["PRD.md", "TASKS.md", "STATUS.md", ".ralph/"]) {
     if (!lines.includes(pattern)) {
-      appendFileSync(excludeFile, `${pattern}\n`);
+      appendFileSync(excludeFile, `${needsNewline ? "\n" : ""}${pattern}\n`);
+      needsNewline = false;
     }
   }
 }
