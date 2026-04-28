@@ -30,7 +30,7 @@ function recentCommitMessageGuidance(target: string): string {
       ? Math.round((lengths[middle - 1] + lengths[middle]) / 2)
       : lengths[middle];
   const longest = lengths[lengths.length - 1];
-  const maxSubjectLength = Math.min(longest, 72);
+  const maxSubjectLength = Math.min(longest, 40);
   const examples = subjects.slice(0, 5).map((subject) => `  - ${subject}`).join("\n");
 
   return `Ensure you follow the project's existing commit message style.

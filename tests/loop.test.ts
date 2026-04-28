@@ -60,7 +60,7 @@ describe("makePrompt", () => {
     expect(content).toContain("Do not exceed 25 chars unless the recent history clearly supports it.");
   });
 
-  test("caps commit message length guidance at 72 chars", () => {
+  test("caps commit message length guidance at 40 chars", () => {
     Bun.spawnSync(["git", "init"], { cwd: TMP, stdout: "pipe", stderr: "pipe" });
     Bun.spawnSync(["git", "config", "user.name", "Ralph Test"], { cwd: TMP });
     Bun.spawnSync(["git", "config", "user.email", "ralph@example.test"], { cwd: TMP });
@@ -81,7 +81,7 @@ describe("makePrompt", () => {
     const content = readFileSync(file, "utf-8");
 
     expect(content).toContain("longest 76 chars");
-    expect(content).toContain("Do not exceed 72 chars unless the recent history clearly supports it.");
+    expect(content).toContain("Do not exceed 40 chars unless the recent history clearly supports it.");
   });
 
   test("shows none auto-detected when no check cmd", () => {
