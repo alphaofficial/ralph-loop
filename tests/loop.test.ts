@@ -35,53 +35,17 @@ describe("makePrompt", () => {
     expect(content).toContain("Verification command after your run: cargo test");
   });
 
-  test("includes commit message length guidance from recent commits", () => {
-    Bun.spawnSync(["git", "init"], { cwd: TMP, stdout: "pipe", stderr: "pipe" });
-    Bun.spawnSync(["git", "config", "user.name", "Ralph Test"], { cwd: TMP });
-    Bun.spawnSync(["git", "config", "user.email", "ralph@example.test"], { cwd: TMP });
-    Bun.spawnSync(["git", "commit", "--allow-empty", "-m", "Short fix"], {
-      cwd: TMP,
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    Bun.spawnSync(["git", "commit", "--allow-empty", "-m", "Clarify generated prompts"], {
-      cwd: TMP,
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-
+  test("includes fixed commit message guidance", () => {
     const file = join(TMP, ".ralph", "prompt-claude.txt");
     makePrompt("claude", TMP, "bun test", 1, file);
     const content = readFileSync(file, "utf-8");
 
-    expect(content).toContain("Recent commit subject lengths:");
-    expect(content).toContain("median 17 chars");
-    expect(content).toContain("longest 25 chars");
-    expect(content).toContain("Do not exceed 25 chars unless the recent history clearly supports it.");
-  });
-
-  test("caps commit message length guidance at 40 chars", () => {
-    Bun.spawnSync(["git", "init"], { cwd: TMP, stdout: "pipe", stderr: "pipe" });
-    Bun.spawnSync(["git", "config", "user.name", "Ralph Test"], { cwd: TMP });
-    Bun.spawnSync(["git", "config", "user.email", "ralph@example.test"], { cwd: TMP });
-    Bun.spawnSync([
-      "git",
-      "commit",
-      "--allow-empty",
-      "-m",
-      "This commit subject is intentionally much longer than the conventional limit",
-    ], {
-      cwd: TMP,
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-
-    const file = join(TMP, ".ralph", "prompt-claude.txt");
-    makePrompt("claude", TMP, "bun test", 1, file);
-    const content = readFileSync(file, "utf-8");
-
-    expect(content).toContain("longest 76 chars");
-    expect(content).toContain("Do not exceed 40 chars unless the recent history clearly supports it.");
+    expect(content).toContain(
+      "Ensure you follow the project's existing commit message style. Use git log to see project commit messsage format and follow it strictly."
+    );
+    expect(content).toContain(
+      "IMPORTANT: ensure the generated commit message is concise, specific and no more than 48 charaters."
+    );
   });
 
   test("shows none auto-detected when no check cmd", () => {

@@ -4,42 +4,6 @@ import { log, err, startSpinner, formatDuration } from "./ui";
 import { ensureTemplates, updateRunnerBlock } from "./files";
 import { invokeProvider, type Provider } from "./providers";
 
-function recentCommitMessageGuidance(target: string): string {
-  const proc = Bun.spawnSync(["git", "-C", target, "log", "--format=%s", "-n", "20"], {
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  if (proc.exitCode !== 0 || !proc.stdout.length) {
-    return "Ensure you follow the project's existing commit message style. Check git log to see examples.";
-  }
-
-  const decoder = new TextDecoder();
-  const subjects = decoder
-    .decode(proc.stdout)
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
-  if (subjects.length === 0) {
-    return "Ensure you follow the project's existing commit message style. Check git log to see examples.";
-  }
-
-  const lengths = subjects.map((subject) => subject.length).sort((a, b) => a - b);
-  const middle = Math.floor(lengths.length / 2);
-  const median =
-    lengths.length % 2 === 0
-      ? Math.round((lengths[middle - 1] + lengths[middle]) / 2)
-      : lengths[middle];
-  const longest = lengths[lengths.length - 1];
-  const maxSubjectLength = Math.min(longest, 40);
-  const examples = subjects.slice(0, 5).map((subject) => `  - ${subject}`).join("\n");
-
-  return `Ensure you follow the project's existing commit message style.
-Recent commit subject lengths: median ${median} chars, longest ${longest} chars.
-Do not exceed ${maxSubjectLength} chars unless the recent history clearly supports it.
-Recent examples:
-${examples}`;
-}
-
 export function makePrompt(
   provider: string,
   target: string,
@@ -47,7 +11,6 @@ export function makePrompt(
   loopNo: number,
   promptFile: string
 ) {
-  const commitGuidance = recentCommitMessageGuidance(target);
   const content = `You are running one iteration of a Ralph loop inside this project.
 
 Read these files first:
@@ -70,7 +33,9 @@ Iteration number: ${loopNo}
 Verification command after your run: ${checkCmd || "<none auto-detected>"}
 
 Write a one-line commit message describing what you changed to .ralph/commit-msg.txt.
-${commitGuidance}
+Ensure you follow the project's existing commit message style. Use git log to see project commit messsage format and follow it strictly.
+
+IMPORTANT: ensure the generated commit message is concise, specific and no more than 48 charaters.
 
 IMPORTANT: NEVER run git write commands (git add, git commit, git push, git stash, git reset, git checkout, git revert). Only git read commands are permitted (git log, git diff, git show, git status, git blame). The ralph runner handles all commits automatically.
 
