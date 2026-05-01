@@ -62,6 +62,16 @@ describe("makePrompt", () => {
     expect(content).toContain("exactly ONE unchecked task from TASKS.md");
   });
 
+  test("requires all tests to pass before completing task", () => {
+    const file = join(TMP, ".ralph", "prompt-claude.txt");
+    makePrompt("claude", TMP, "npm test", 1, file);
+    const content = readFileSync(file, "utf-8");
+    expect(content).toContain("Do not mark the task complete while any tests are failing.");
+    expect(content).toContain(
+      "All tests must pass first, even if the failures look unrelated or pre-existing."
+    );
+  });
+
   test("writes file with 0o600 permissions", () => {
     const file = join(TMP, ".ralph", "prompt-claude.txt");
     makePrompt("claude", TMP, "", 1, file);
