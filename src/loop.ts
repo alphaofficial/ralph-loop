@@ -28,7 +28,9 @@ Rules:
 - Update STATUS.md with what you changed and what the next task should be.
 - Keep STATUS.md concrete, short, and truthful.
 - Do not touch other unchecked tasks.
-- If you encouter any issues from code or test, fix the issue and update STATUS.md with what you did to fix it. Do not leave any known issues unfixed before marking the task complete.
+- If you encounter any code or test issues, fix them and update STATUS.md with what you did to fix them.
+- Do not mark the task complete while any tests are failing. All tests must pass first, even if the failures look unrelated or pre-existing.
+- Do not leave known issues unfixed before checking off the task.
 
 Iteration number: ${loopNo}
 Verification command after your run: ${checkCmd || "<none auto-detected>"}
