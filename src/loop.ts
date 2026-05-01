@@ -33,7 +33,9 @@ Iteration number: ${loopNo}
 Verification command after your run: ${checkCmd || "<none auto-detected>"}
 
 Write a one-line commit message describing what you changed to .ralph/commit-msg.txt.
-Ensure you follow the project's existing commit message style. Check git log to see examples.
+Ensure you follow the project's existing commit message style. Use git log to see project commit messsage format and follow it strictly.
+
+IMPORTANT: ensure the generated commit message is concise, specific and no more than 48 charaters.
 
 IMPORTANT: NEVER run git write commands (git add, git commit, git push, git stash, git reset, git checkout, git revert). Only git read commands are permitted (git log, git diff, git show, git status, git blame). The ralph runner handles all commits automatically.
 
