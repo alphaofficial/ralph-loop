@@ -105,7 +105,11 @@ describe("cli", () => {
     const { stdout, exitCode } = await run("claude", "--dry-run", TMP);
     expect(exitCode).toBe(0);
     expect(stdout).toContain("Iteration number: 1");
-    expect(stdout).toContain("Read these files first:");
+    expect(stdout).toContain("The project planning files are embedded below.");
+    expect(stdout).toContain("<PRD>");
+    expect(stdout).toContain("<TASKS>");
+    expect(stdout).toContain("<STATUS>");
+    expect(existsSync(join(TMP, ".ralph", "prompt-claude.txt"))).toBe(false);
   });
 
   test("--help lists copilot as a provider", async () => {
@@ -132,9 +136,10 @@ describe("cli", () => {
     expect(stdout).toContain("Iteration number: 1");
   });
 
-  test("gen gemini passes provider validation", async () => {
-    const { stderr, exitCode } = await run("gen", "gemini", "Build a Gemini flow", TMP);
+  test("gen gemini passes provider validation before requiring description", async () => {
+    const { stderr, exitCode } = await run("gen", "gemini");
     expect(exitCode).toBe(1);
     expect(stderr).not.toContain("Unknown provider: gemini");
+    expect(stderr).toContain('Usage: ralph gen <provider> "description" [target_dir]');
   });
 });

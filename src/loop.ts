@@ -4,19 +4,39 @@ import { log, err, startSpinner, formatDuration } from "./ui";
 import { ensureTemplates, updateRunnerBlock } from "./files";
 import { invokeProvider, type Provider } from "./providers";
 
+function readProjectFile(target: string, filename: string): string {
+  try {
+    return readFileSync(join(target, filename), "utf-8").trimEnd();
+  } catch {
+    return `${filename} could not be read.`;
+  }
+}
+
 export function makePrompt(
-  provider: string,
   target: string,
   checkCmd: string,
   loopNo: number,
-  promptFile: string
+  lastFailedOutput = ""
 ) {
-  const content = `You are running one iteration of a Ralph loop inside this project.
+  const prd = readProjectFile(target, "PRD.md");
+  const tasks = readProjectFile(target, "TASKS.md");
+  const status = readProjectFile(target, "STATUS.md");
 
-Read these files first:
-- PRD.md
-- TASKS.md
-- STATUS.md
+  let content = `You are running one iteration of a Ralph loop inside this project.
+
+The project planning files are embedded below. Use these embedded copies instead of reading PRD.md, TASKS.md, or STATUS.md via tool calls.
+
+<PRD>
+${prd}
+</PRD>
+
+<TASKS>
+${tasks}
+</TASKS>
+
+<STATUS>
+${status}
+</STATUS>
 
 CRITICAL: You must complete exactly ONE unchecked task from TASKS.md, then stop.
 Do NOT attempt multiple tasks. Another fresh instance will handle the next task.
@@ -45,7 +65,18 @@ If you need to leave notes for the next fresh instance, put them in STATUS.md.
 
 IMPORTANT: Do not mark the task complete while any tests are failing. All tests must pass first, even if the failures look unrelated or pre-existing.
 `;
-  writeFileSync(promptFile, content, { mode: 0o600 });
+
+  if (lastFailedOutput.trim()) {
+    content += `
+Your previous attempt FAILED verification. Here is the raw output:
+
+${lastFailedOutput.trimEnd()}
+
+Fix the issue before proceeding.
+`;
+  }
+
+  return content;
 }
 
 export const SKIP = Symbol("skip");
@@ -95,13 +126,18 @@ export function allTasksComplete(target: string): boolean {
   }
 }
 
-export async function autoCommit(target: string, loop: number) {
-  // Only commit if target is a git repo
+function isGitRepo(target: string): boolean {
   const check = Bun.spawnSync(["git", "-C", target, "rev-parse", "--is-inside-work-tree"], {
     stdout: "pipe",
     stderr: "pipe",
   });
-  if (check.exitCode !== 0) return;
+  return check.exitCode === 0;
+}
+
+export async function autoCommit(target: string, loop: number, canCommit = isGitRepo(target)) {
+  // Only commit if target is a git repo
+  const isGitRepo = canCommit;
+  if (!isGitRepo) return;
 
   // Stage all changes
   const add = Bun.spawnSync(["git", "-C", target, "add", "-A"], {
@@ -172,8 +208,10 @@ export async function mainLoop(
   ensureTemplates(target);
 
   const loopStart = Date.now();
+  const canAutoCommit = isGitRepo(target);
   let loop = 0;
   let retries = 0;
+  let lastFailedOutput = "";
   let iterationStart: number;
   while (!allTasksComplete(target)) {
     loop++;
@@ -181,12 +219,11 @@ export async function mainLoop(
     const total = formatDuration(Date.now() - loopStart);
     log(`loop ${loop} (${provider}) · total ${total}${retries > 0 ? ` · retry ${retries}/${maxLoops}` : ""}`);
 
-    const promptFile = join(target, ".ralph", `prompt-${provider}.txt`);
-    makePrompt(provider, target, checkCmd, loop, promptFile);
+    const prompt = makePrompt(target, checkCmd, loop, lastFailedOutput);
 
     if (dryRun) {
       log("dry run, not invoking " + provider);
-      console.log(readFileSync(promptFile, "utf-8"));
+      console.log(prompt);
       return 0;
     }
 
@@ -197,7 +234,7 @@ export async function mainLoop(
       const providerCode = await invokeProvider(
         provider,
         target,
-        promptFile,
+        prompt,
         process.env.RALPH_MODEL
       );
       if (providerCode !== 0) {
@@ -218,6 +255,7 @@ export async function mainLoop(
     stopCheck();
 
     const output = first120Lines(checkOut);
+    const rawCheckOutput = readFileSync(checkOut, "utf-8");
 
     const iterTime = formatDuration(Date.now() - iterationStart!);
     let summary: string;
@@ -241,9 +279,11 @@ export async function mainLoop(
 
     // Only commit when checks pass — failed iterations retry on next loop
     if (code === 0 || code === SKIP) {
-      await autoCommit(target, loop);
+      await autoCommit(target, loop, canAutoCommit);
       retries = 0; // reset on success
+      lastFailedOutput = "";
     } else {
+      lastFailedOutput = rawCheckOutput;
       retries++;
       if (retries >= maxLoops) {
         const total = formatDuration(Date.now() - loopStart);

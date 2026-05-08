@@ -90,6 +90,8 @@ ralph opencode --check "pytest -q"
 ## Max loops
 Default is 8.
 
+This caps consecutive failed retries on the current task before the runner gives up.
+
 Override it if needed:
 ```bash
 ralph claude --max-loops 12

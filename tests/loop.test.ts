@@ -15,30 +15,29 @@ afterEach(() => {
 });
 
 describe("makePrompt", () => {
-  test("writes prompt file", () => {
-    const file = join(TMP, ".ralph", "prompt-claude.txt");
-    makePrompt("claude", TMP, "npm test", 1, file);
-    expect(existsSync(file)).toBe(true);
+  beforeEach(() => {
+    writeFileSync(join(TMP, "PRD.md"), "# PRD\nBuild the thing.\n");
+    writeFileSync(join(TMP, "TASKS.md"), "- [ ] first task\n");
+    writeFileSync(join(TMP, "STATUS.md"), "Ready.\n");
+  });
+
+  test("returns prompt content", () => {
+    const content = makePrompt(TMP, "npm test", 1);
+    expect(content).toContain("You are running one iteration of a Ralph loop");
   });
 
   test("includes iteration number", () => {
-    const file = join(TMP, ".ralph", "prompt-claude.txt");
-    makePrompt("claude", TMP, "npm test", 3, file);
-    const content = readFileSync(file, "utf-8");
+    const content = makePrompt(TMP, "npm test", 3);
     expect(content).toContain("Iteration number: 3");
   });
 
   test("includes check command", () => {
-    const file = join(TMP, ".ralph", "prompt-claude.txt");
-    makePrompt("claude", TMP, "cargo test", 1, file);
-    const content = readFileSync(file, "utf-8");
+    const content = makePrompt(TMP, "cargo test", 1);
     expect(content).toContain("Verification command after your run: cargo test");
   });
 
   test("includes fixed commit message guidance", () => {
-    const file = join(TMP, ".ralph", "prompt-claude.txt");
-    makePrompt("claude", TMP, "bun test", 1, file);
-    const content = readFileSync(file, "utf-8");
+    const content = makePrompt(TMP, "bun test", 1);
 
     expect(content).toContain(
       "Ensure you follow the project's existing commit message style. Use git log to see project commit messsage format and follow it strictly."
@@ -49,34 +48,40 @@ describe("makePrompt", () => {
   });
 
   test("shows none auto-detected when no check cmd", () => {
-    const file = join(TMP, ".ralph", "prompt-claude.txt");
-    makePrompt("claude", TMP, "", 1, file);
-    const content = readFileSync(file, "utf-8");
+    const content = makePrompt(TMP, "", 1);
     expect(content).toContain("<none auto-detected>");
   });
 
   test("includes pick ONE task instruction", () => {
-    const file = join(TMP, ".ralph", "prompt-claude.txt");
-    makePrompt("claude", TMP, "", 1, file);
-    const content = readFileSync(file, "utf-8");
+    const content = makePrompt(TMP, "", 1);
     expect(content).toContain("exactly ONE unchecked task from TASKS.md");
   });
 
   test("requires all tests to pass before completing task", () => {
-    const file = join(TMP, ".ralph", "prompt-claude.txt");
-    makePrompt("claude", TMP, "npm test", 1, file);
-    const content = readFileSync(file, "utf-8");
+    const content = makePrompt(TMP, "npm test", 1);
     expect(content).toContain("Do not mark the task complete while any tests are failing.");
     expect(content).toContain(
       "All tests must pass first, even if the failures look unrelated or pre-existing."
     );
   });
 
-  test("writes file with 0o600 permissions", () => {
-    const file = join(TMP, ".ralph", "prompt-claude.txt");
-    makePrompt("claude", TMP, "", 1, file);
-    const mode = statSync(file).mode & 0o777;
-    expect(mode).toBe(0o600);
+  test("inlines project planning files", () => {
+    const content = makePrompt(TMP, "", 1);
+
+    expect(content).toContain("<PRD>\n# PRD\nBuild the thing.\n</PRD>");
+    expect(content).toContain("<TASKS>\n- [ ] first task\n</TASKS>");
+    expect(content).toContain("<STATUS>\nReady.\n</STATUS>");
+    expect(content).toContain(
+      "Use these embedded copies instead of reading PRD.md, TASKS.md, or STATUS.md via tool calls."
+    );
+  });
+
+  test("includes last failed check output when provided", () => {
+    const content = makePrompt(TMP, "bun test", 2, "expected 1, received 2\n");
+
+    expect(content).toContain("Your previous attempt FAILED verification");
+    expect(content).toContain("expected 1, received 2");
+    expect(content).toContain("Fix the issue before proceeding.");
   });
 });
 

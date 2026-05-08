@@ -1,5 +1,5 @@
 import { describe, expect, spyOn, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { GENERATION_PROVIDERS, LOOP_PROVIDERS, invokeProvider } from "../src/providers";
@@ -19,15 +19,13 @@ describe("providers", () => {
 
   test("invokeProvider uses Gemini CLI prompt mode", async () => {
     const target = mkdtempSync(join(tmpdir(), "ralph-providers-"));
-    const promptFile = join(target, "prompt.txt");
-    writeFileSync(promptFile, "Use Gemini to build this.");
 
     const spawn = spyOn(Bun, "spawn").mockReturnValue({
       exited: Promise.resolve(0),
     } as ReturnType<typeof Bun.spawn>);
 
     try {
-      const code = await invokeProvider("gemini", target, promptFile);
+      const code = await invokeProvider("gemini", target, "Use Gemini to build this.");
 
       expect(code).toBe(0);
       expect(spawn).toHaveBeenCalledTimes(1);
@@ -45,15 +43,13 @@ describe("providers", () => {
 
   test("invokeProvider passes Gemini model overrides", async () => {
     const target = mkdtempSync(join(tmpdir(), "ralph-providers-"));
-    const promptFile = join(target, "prompt.txt");
-    writeFileSync(promptFile, "Use Gemini to build this.");
 
     const spawn = spyOn(Bun, "spawn").mockReturnValue({
       exited: Promise.resolve(0),
     } as ReturnType<typeof Bun.spawn>);
 
     try {
-      await invokeProvider("gemini", target, promptFile, "gemini-2.5-pro");
+      await invokeProvider("gemini", target, "Use Gemini to build this.", "gemini-2.5-pro");
 
       expect(spawn.mock.calls[0]?.[0]).toEqual([
         "gemini",
