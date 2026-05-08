@@ -27,14 +27,14 @@ Commands:
   opencode              Run loop with OpenCode
 
 Options:
-  --max-loops N         Max iterations (default: 8)
+  --max-loops N         Max consecutive failed retries per task (default: 8)
   --check CMD           Override verification command
   --dry-run             Show prompt without invoking
   -h, --help            Show this help
 
 Environment:
   RALPH_CHECK_CMD       Override verification command
-  RALPH_MAX_LOOPS       Override max loops
+  RALPH_MAX_LOOPS       Override max consecutive failed retries per task
   RALPH_MODEL           Provider-specific model string
 `;
 

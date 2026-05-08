@@ -63,11 +63,12 @@ export async function generate(
   ensureGitExcludes(target);
 
   const promptFile = join(target, ".ralph", "prompt-gen.txt");
-  writeFileSync(promptFile, GEN_PROMPT(description), { mode: 0o600 });
+  const prompt = GEN_PROMPT(description);
+  writeFileSync(promptFile, prompt, { mode: 0o600 });
 
   const stop = startSpinner(`generating project files with ${provider}`);
   try {
-    const code = await invokeProvider(provider, target, promptFile, model);
+    const code = await invokeProvider(provider, target, prompt, model);
     if (code !== 0) {
       throw new Error(`${provider} exited with code ${code}`);
     }
@@ -85,5 +86,5 @@ export async function generate(
     }
   }
 
-  log("generated PRD.md, TASKS.md, STATUS.md");
+  log("✅ Generated PRD.md, TASKS.md, STATUS.md");
 }

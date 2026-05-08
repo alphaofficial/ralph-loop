@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-
 export const LOOP_PROVIDERS = ["claude", "copilot", "codex", "gemini", "opencode"] as const;
 export const GENERATION_PROVIDERS = ["claude", "copilot", "codex", "gemini", "opencode"] as const;
 
@@ -8,11 +6,9 @@ export type Provider = (typeof LOOP_PROVIDERS)[number];
 export async function invokeProvider(
   provider: Provider,
   target: string,
-  promptFile: string,
+  prompt: string,
   model?: string
 ): Promise<number> {
-  const prompt = readFileSync(promptFile, "utf-8");
-
   let proc;
 
   switch (provider) {
