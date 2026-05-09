@@ -13,6 +13,14 @@ describe("providers", () => {
     expect(LOOP_PROVIDERS).toContain("gemini");
   });
 
+  test("generation providers include hermes", () => {
+    expect(GENERATION_PROVIDERS).toContain("hermes");
+  });
+
+  test("loop providers include hermes", () => {
+    expect(LOOP_PROVIDERS).toContain("hermes");
+  });
+
   test("generation and loop providers stay aligned", () => {
     expect(GENERATION_PROVIDERS).toEqual(LOOP_PROVIDERS);
   });
@@ -88,7 +96,7 @@ describe("providers", () => {
     }
   });
 
-  test.failing("providerCommand uses Hermes single-query mode", () => {
+  test("providerCommand uses Hermes single-query mode", () => {
     const prompt = "Generate clarifying questions";
     const command = providerCommand(
       "hermes" as unknown as Parameters<typeof providerCommand>[0],
@@ -104,7 +112,7 @@ describe("providers", () => {
     expect(command.stdin).toBeUndefined();
   });
 
-  test.failing("invokeProvider keeps Hermes headless when interactive flag is requested", async () => {
+  test("invokeProvider keeps Hermes headless when interactive flag is requested", async () => {
     const target = mkdtempSync(join(tmpdir(), "ralph-providers-"));
 
     const spawn = spyOn(Bun, "spawn").mockReturnValue({
@@ -162,29 +170,39 @@ describe("providers", () => {
   test.each(GENERATION_PROVIDERS)("providerCommand keeps %s in one-shot prompt mode for captured helper calls", (provider) => {
     const command = providerCommand(provider, "/tmp/project", "Generate clarifying questions", "model-name");
 
-    expect(command.args).not.toContain("chat");
     expect(command.args).not.toContain("interactive");
     switch (provider) {
       case "claude":
+        expect(command.args).not.toContain("chat");
         expect(command.args).toContain("-p");
         expect(command.stdin).toBeInstanceOf(Blob);
         break;
       case "copilot":
+        expect(command.args).not.toContain("chat");
         expect(command.args).toContain("-p");
         expect(command.args).toContain("Generate clarifying questions");
         expect(command.stdin).toBeUndefined();
         break;
       case "codex":
+        expect(command.args).not.toContain("chat");
         expect(command.args).toContain("exec");
         expect(command.args).toContain("Generate clarifying questions");
         expect(command.stdin).toBeUndefined();
         break;
       case "gemini":
+        expect(command.args).not.toContain("chat");
         expect(command.args).toContain("-p");
         expect(command.args).toContain("Generate clarifying questions");
         expect(command.stdin).toBeUndefined();
         break;
+      case "hermes":
+        expect(command.args).toContain("chat");
+        expect(command.args).toContain("-q");
+        expect(command.args).toContain("Generate clarifying questions");
+        expect(command.stdin).toBeUndefined();
+        break;
       case "opencode":
+        expect(command.args).not.toContain("chat");
         expect(command.args).toContain("run");
         expect(command.args).toContain("Generate clarifying questions");
         expect(command.stdin).toBeUndefined();
