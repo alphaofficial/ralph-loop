@@ -88,6 +88,53 @@ describe("providers", () => {
     }
   });
 
+  test.failing("providerCommand uses Hermes single-query mode", () => {
+    const prompt = "Generate clarifying questions";
+    const command = providerCommand(
+      "hermes" as unknown as Parameters<typeof providerCommand>[0],
+      "/tmp/project",
+      prompt,
+      "model-name"
+    );
+
+    expect(command.args).toEqual(["hermes", "chat", "-q", prompt, "--model", "model-name"]);
+    expect(command.args.filter((arg) => arg === prompt)).toHaveLength(1);
+    expect(command.args).not.toContain("interactive");
+    expect(command.args).not.toContain("session");
+    expect(command.stdin).toBeUndefined();
+  });
+
+  test.failing("invokeProvider keeps Hermes headless when interactive flag is requested", async () => {
+    const target = mkdtempSync(join(tmpdir(), "ralph-providers-"));
+
+    const spawn = spyOn(Bun, "spawn").mockReturnValue({
+      exited: Promise.resolve(0),
+    } as ReturnType<typeof Bun.spawn>);
+
+    try {
+      const code = await invokeProvider(
+        "hermes" as unknown as Parameters<typeof invokeProvider>[0],
+        target,
+        "Start by clarifying.",
+        undefined,
+        true
+      );
+
+      expect(code).toBe(0);
+      expect(spawn).toHaveBeenCalledTimes(1);
+      expect(spawn.mock.calls[0]?.[0]).toEqual(["hermes", "chat", "-q", "Start by clarifying."]);
+      expect(spawn.mock.calls[0]?.[1]).toMatchObject({
+        cwd: target,
+        stdout: "inherit",
+        stderr: "inherit",
+      });
+      expect((spawn.mock.calls[0]?.[1] as { stdin?: unknown } | undefined)?.stdin).not.toBe("inherit");
+    } finally {
+      spawn.mockRestore();
+      rmSync(target, { recursive: true, force: true });
+    }
+  });
+
   test.each(GENERATION_PROVIDERS)("invokeProvider keeps %s in one-shot mode when interactive flag is requested", async (provider) => {
     const target = mkdtempSync(join(tmpdir(), "ralph-providers-"));
 
