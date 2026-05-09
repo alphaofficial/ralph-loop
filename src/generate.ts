@@ -162,7 +162,7 @@ export async function generate(
   const prompt = GEN_PROMPT(description, clarifications);
   writeFileSync(promptFile, prompt, { mode: 0o600 });
 
-  const stop = startSpinner(`generating project files with ${provider}`);
+  const stop = startSpinner(`🌀 Generating project files with ${provider}`);
   try {
     const code = await invokeProvider(provider, target, prompt, model, interactive);
     if (code !== 0) {
