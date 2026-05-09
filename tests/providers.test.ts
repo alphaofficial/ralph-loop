@@ -2,7 +2,7 @@ import { describe, expect, spyOn, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { GENERATION_PROVIDERS, LOOP_PROVIDERS, invokeProvider } from "../src/providers";
+import { GENERATION_PROVIDERS, LOOP_PROVIDERS, invokeProvider, providerCommand } from "../src/providers";
 
 describe("providers", () => {
   test("generation providers include gemini", () => {
@@ -61,6 +61,87 @@ describe("providers", () => {
     } finally {
       spawn.mockRestore();
       rmSync(target, { recursive: true, force: true });
+    }
+  });
+
+  test("invokeProvider still uses Gemini prompt mode when interactive flag is requested", async () => {
+    const target = mkdtempSync(join(tmpdir(), "ralph-providers-"));
+
+    const spawn = spyOn(Bun, "spawn").mockReturnValue({
+      exited: Promise.resolve(0),
+    } as ReturnType<typeof Bun.spawn>);
+
+    try {
+      const code = await invokeProvider("gemini", target, "Start by clarifying.", undefined, true);
+
+      expect(code).toBe(0);
+      expect(spawn).toHaveBeenCalledTimes(1);
+      expect(spawn.mock.calls[0]?.[0]).toEqual(["gemini", "-p", "Start by clarifying."]);
+      expect(spawn.mock.calls[0]?.[1]).toMatchObject({
+        cwd: target,
+        stdout: "inherit",
+        stderr: "inherit",
+      });
+    } finally {
+      spawn.mockRestore();
+      rmSync(target, { recursive: true, force: true });
+    }
+  });
+
+  test.each(GENERATION_PROVIDERS)("invokeProvider keeps %s in one-shot mode when interactive flag is requested", async (provider) => {
+    const target = mkdtempSync(join(tmpdir(), "ralph-providers-"));
+
+    const spawn = spyOn(Bun, "spawn").mockReturnValue({
+      exited: Promise.resolve(0),
+    } as ReturnType<typeof Bun.spawn>);
+
+    try {
+      await invokeProvider(provider, target, "Start by clarifying.", undefined, true);
+
+      const args = spawn.mock.calls[0]?.[0] as string[];
+      const options = spawn.mock.calls[0]?.[1] as { stdin?: unknown } | undefined;
+      if (provider === "claude") {
+        expect(args).toContain("-p");
+      } else {
+        expect(args).toContain("Start by clarifying.");
+      }
+      expect(options?.stdin).not.toBe("inherit");
+    } finally {
+      spawn.mockRestore();
+      rmSync(target, { recursive: true, force: true });
+    }
+  });
+
+  test.each(GENERATION_PROVIDERS)("providerCommand keeps %s in one-shot prompt mode for captured helper calls", (provider) => {
+    const command = providerCommand(provider, "/tmp/project", "Generate clarifying questions", "model-name");
+
+    expect(command.args).not.toContain("chat");
+    expect(command.args).not.toContain("interactive");
+    switch (provider) {
+      case "claude":
+        expect(command.args).toContain("-p");
+        expect(command.stdin).toBeInstanceOf(Blob);
+        break;
+      case "copilot":
+        expect(command.args).toContain("-p");
+        expect(command.args).toContain("Generate clarifying questions");
+        expect(command.stdin).toBeUndefined();
+        break;
+      case "codex":
+        expect(command.args).toContain("exec");
+        expect(command.args).toContain("Generate clarifying questions");
+        expect(command.stdin).toBeUndefined();
+        break;
+      case "gemini":
+        expect(command.args).toContain("-p");
+        expect(command.args).toContain("Generate clarifying questions");
+        expect(command.stdin).toBeUndefined();
+        break;
+      case "opencode":
+        expect(command.args).toContain("run");
+        expect(command.args).toContain("Generate clarifying questions");
+        expect(command.stdin).toBeUndefined();
+        break;
     }
   });
 });

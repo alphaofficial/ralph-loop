@@ -45,7 +45,10 @@ ralph init
 # edit PRD.md, TASKS.md, STATUS.md
 ralph claude
 ralph gen gemini "Add Stripe subscriptions"
+ralph gen gemini "Add Stripe subscriptions" --interactive
 ```
+
+With `ralph gen ... --interactive` or `-i`, Ralph first asks the selected provider for request-specific clarifying questions in non-interactive one-shot prompt mode. Ralph asks those questions in its own CLI, adds your answers to the final generation prompt, then invokes the selected provider again in non-interactive one-shot prompt mode to write the files. It does not launch the provider's interactive terminal session.
 
 Or run against another project without copying scripts into it:
 ```bash

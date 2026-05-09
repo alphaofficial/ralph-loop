@@ -3,19 +3,15 @@ export const GENERATION_PROVIDERS = ["claude", "copilot", "codex", "gemini", "op
 
 export type Provider = (typeof LOOP_PROVIDERS)[number];
 
-export async function invokeProvider(
-  provider: Provider,
-  target: string,
-  prompt: string,
-  model?: string
-): Promise<number> {
-  let proc;
-
+export function providerCommand(provider: Provider, target: string, prompt: string, model?: string): {
+  args: string[];
+  stdin?: Blob;
+  env?: Record<string, string | undefined>;
+} {
   switch (provider) {
     case "claude": {
       const env = { ...process.env };
       delete env.ANTHROPIC_API_KEY;
-
       const args = [
         "claude",
         "-p",
@@ -24,15 +20,7 @@ export async function invokeProvider(
         target,
       ];
       if (model) args.push("--model", model);
-
-      proc = Bun.spawn(args, {
-        cwd: target,
-        env,
-        stdin: new Blob([prompt]),
-        stdout: "inherit",
-        stderr: "inherit",
-      });
-      break;
+      return { args, stdin: new Blob([prompt]), env };
     }
 
     case "codex": {
@@ -45,13 +33,7 @@ export async function invokeProvider(
       ];
       if (model) args.push("--model", model);
       args.push(prompt);
-
-      proc = Bun.spawn(args, {
-        cwd: target,
-        stdout: "inherit",
-        stderr: "inherit",
-      });
-      break;
+      return { args };
     }
 
     case "opencode": {
@@ -62,13 +44,7 @@ export async function invokeProvider(
       ];
       if (model) args.push("--model", model);
       args.push(prompt);
-
-      proc = Bun.spawn(args, {
-        cwd: target,
-        stdout: "inherit",
-        stderr: "inherit",
-      });
-      break;
+      return { args };
     }
 
     case "copilot": {
@@ -79,27 +55,32 @@ export async function invokeProvider(
         "--allow-all",
       ];
       if (model) args.push("--model", model);
-
-      proc = Bun.spawn(args, {
-        cwd: target,
-        stdout: "inherit",
-        stderr: "inherit",
-      });
-      break;
+      return { args };
     }
 
     case "gemini": {
       const args = ["gemini", "-p", prompt];
       if (model) args.push("--model", model);
-
-      proc = Bun.spawn(args, {
-        cwd: target,
-        stdout: "inherit",
-        stderr: "inherit",
-      });
-      break;
+      return { args };
     }
   }
+}
+
+export async function invokeProvider(
+  provider: Provider,
+  target: string,
+  prompt: string,
+  model?: string,
+  _interactive = false
+): Promise<number> {
+  const command = providerCommand(provider, target, prompt, model);
+  const proc = Bun.spawn(command.args, {
+    cwd: target,
+    env: command.env,
+    stdin: command.stdin,
+    stdout: "inherit",
+    stderr: "inherit",
+  });
 
   return await proc.exited;
 }
