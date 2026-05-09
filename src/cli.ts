@@ -30,6 +30,7 @@ Options:
   --max-loops N         Max consecutive failed retries per task (default: 8)
   --check CMD           Override verification command
   --dry-run             Show prompt without invoking
+  -i, --interactive     With gen, dynamically ask provider-generated clarifying questions before writing files
   -h, --help            Show this help
 
 Environment:
@@ -143,21 +144,38 @@ async function main() {
   }
 
   if (command === "gen") {
-    // ralph gen <provider> "description" [target]
+    // ralph gen <provider> "description" [target] [--interactive]
     const args = process.argv.slice(3);
-    if (args.length < 2) {
+    const positionals: string[] = [];
+    let interactive = false;
+    for (const arg of args) {
+      if (arg === "--interactive" || arg === "-i") {
+        interactive = true;
+      } else if (arg.startsWith("-") && positionals.length !== 1) {
+        console.error(`Unknown gen option: ${arg}`);
+        process.exit(1);
+      } else {
+        positionals.push(arg);
+      }
+    }
+
+    if (positionals.length < 2) {
       console.error('Usage: ralph gen <provider> "description" [target_dir]');
       process.exit(1);
     }
-    const genProvider = args[0] as Provider;
+    if (positionals.length > 3) {
+      console.error(`Unexpected extra argument: ${positionals[3]}`);
+      process.exit(1);
+    }
+    const genProvider = positionals[0] as Provider;
     if (!GENERATION_PROVIDERS.includes(genProvider)) {
       console.error(`Unknown provider: ${genProvider}`);
       process.exit(1);
     }
-    const description = args[1];
-    const genTarget = args[2] ? resolve(args[2]) : process.cwd();
+    const description = positionals[1];
+    const genTarget = positionals[2] ? resolve(positionals[2]) : process.cwd();
     try {
-      await generate(genProvider, genTarget, description, process.env.RALPH_MODEL);
+      await generate(genProvider, genTarget, description, process.env.RALPH_MODEL, interactive);
     } catch (e) {
       console.error(e instanceof Error ? e.message : e);
       process.exit(1);
