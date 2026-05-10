@@ -123,10 +123,72 @@ jobs:
             RANGE="${{ needs.tag.outputs.tag }}"
           fi
 
+          types=(feat fix docs refactor test ci build perf style chore)
+
+          section_title() {
+            case "$1" in
+              feat) echo "Features" ;;
+              fix) echo "Fixes" ;;
+              docs) echo "Documentation" ;;
+              refactor) echo "Refactoring" ;;
+              test) echo "Tests" ;;
+              ci) echo "CI" ;;
+              build) echo "Build" ;;
+              perf) echo "Performance" ;;
+              style) echo "Style" ;;
+              chore) echo "Chores" ;;
+            esac
+          }
+
+          notes_dir="$(mktemp -d)"
+          trap 'rm -rf "$notes_dir"' EXIT
+          breaking_file="$notes_dir/breaking.md"
+          other_file="$notes_dir/other.md"
+          touch "$breaking_file" "$other_file"
+          for type in "${types[@]}"; do
+            touch "$notes_dir/$type.md"
+          done
+
+          breaking_re='^(feat|fix|docs|refactor|test|ci|build|perf|style|chore)(\([^)]*\))?!:[[:space:]]+(.+)$'
+          normal_re='^(feat|fix|docs|refactor|test|ci|build|perf|style|chore)(\([^)]*\))?:[[:space:]]+(.+)$'
+
+          while IFS= read -r subject || [ -n "$subject" ]; do
+            if [[ "$subject" =~ $breaking_re ]]; then
+              type="${BASH_REMATCH[1]}"
+              scope="${BASH_REMATCH[2]}"
+              description="${BASH_REMATCH[3]}"
+              printf -- '- %s%s!: %s\n' "$type" "$scope" "$description" >> "$breaking_file"
+            elif [[ "$subject" =~ $normal_re ]]; then
+              type="${BASH_REMATCH[1]}"
+              scope="${BASH_REMATCH[2]}"
+              description="${BASH_REMATCH[3]}"
+              printf -- '- %s%s: %s\n' "$type" "$scope" "$description" >> "$notes_dir/$type.md"
+            else
+              printf -- '- %s\n' "$subject" >> "$other_file"
+            fi
+          done < <(git log --pretty=format:'%s' "$RANGE")
+
           {
-            echo "## Changes"
+            echo "## Changelog"
             echo
-            git log --pretty=format:'- %h %s' "$RANGE"
+            if [ -s "$breaking_file" ]; then
+              echo "### Breaking Changes"
+              cat "$breaking_file"
+              echo
+            fi
+            for type in "${types[@]}"; do
+              file="$notes_dir/$type.md"
+              if [ -s "$file" ]; then
+                echo "### $(section_title "$type")"
+                cat "$file"
+                echo
+              fi
+            done
+            if [ -s "$other_file" ]; then
+              echo "### Other Changes"
+              cat "$other_file"
+              echo
+            fi
           } > release-notes.md
 
       - name: Create GitHub release
