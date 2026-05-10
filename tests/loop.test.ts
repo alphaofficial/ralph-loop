@@ -52,6 +52,12 @@ describe("makePrompt", () => {
     expect(content).toContain("<none auto-detected>");
   });
 
+  test("shows disabled verification when check is explicitly disabled", () => {
+    const content = makePrompt(TMP, "", 1, "", true);
+    expect(content).toContain("<disabled by --no-check>");
+    expect(content).not.toContain("<none auto-detected>");
+  });
+
   test("includes pick ONE task instruction", () => {
     const content = makePrompt(TMP, "", 1);
     expect(content).toContain("exactly ONE unchecked task from TASKS.md");
@@ -104,6 +110,13 @@ describe("runCheck", () => {
     const code = await runCheck(TMP, "", outFile);
     expect(code).toBe(SKIP);
     expect(readFileSync(outFile, "utf-8")).toContain("No verification command detected");
+  });
+
+  test("writes disabled reason when check is explicitly disabled", async () => {
+    const outFile = join(TMP, ".ralph", "check-output.txt");
+    const code = await runCheck(TMP, "", outFile, true);
+    expect(code).toBe(SKIP);
+    expect(readFileSync(outFile, "utf-8")).toContain("Runner-managed verification disabled by --no-check");
   });
 
   test("returns 2 when command exits with 2 (not SKIP)", async () => {

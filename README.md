@@ -4,7 +4,7 @@ Ralph is a development methodology based on continuous AI agent loops. As Geoffr
 
 The technique is named after Ralph Wiggum from The Simpsons, embodying the philosophy of persistent iteration despite setbacks.
 
-Supports **Claude Code**, **GitHub Copilot CLI**, **Codex**, **Gemini CLI**, and **OpenCode**.
+Supports **Claude Code**, **GitHub Copilot CLI**, **Codex**, **Gemini CLI**, **Hermes Agent**, **Pi**, and **OpenCode**.
 
 ## What you edit by hand
 Only these three files in the target project:
@@ -34,9 +34,16 @@ To update, run the same command again.
 - `copilot` installed and authenticated if you want `ralph copilot`
 - `codex` installed and authenticated if you want `ralph codex`
 - `gemini` installed and authenticated if you want `ralph gemini`
+- `hermes` installed, on your `PATH`, and configured with at least one provider if you want `ralph hermes`
+- `pi` installed, on your `PATH`, and authenticated with a supported provider if you want `ralph pi`
 - `opencode` installed and authenticated if you want `ralph opencode`
 
 Note: `ralph claude` automatically ignores a stale `ANTHROPIC_API_KEY` env var so it uses your logged-in Claude Code session instead.
+
+## Provider notes
+- Ralph never installs provider CLIs. It only checks whether the expected executable is already available on your `PATH`.
+- `hermes`: executable `hermes`; user-managed setup is a working Hermes install plus at least one configured provider via `hermes model` or `~/.hermes/.env`; Ralph issues `hermes chat -q "<prompt>"`; `RALPH_MODEL` is honored as `hermes chat -q "<prompt>" --model "<model>"`.
+- `pi`: executable `pi`; user-managed setup is a working Pi install plus provider auth via `/login`, provider env vars, or `~/.pi/agent/auth.json`; Ralph issues `pi -p "<prompt>"`; `RALPH_MODEL` is honored as `pi -p "<prompt>" --model "<model>"`.
 
 ## Basic usage
 Inside any project:
@@ -44,7 +51,11 @@ Inside any project:
 ralph init
 # edit PRD.md, TASKS.md, STATUS.md
 ralph claude
+ralph hermes
+ralph pi
 ralph gen gemini "Add Stripe subscriptions"
+ralph gen hermes "Add Stripe subscriptions"
+ralph gen pi "Add Stripe subscriptions"
 ralph gen gemini "Add Stripe subscriptions" --interactive
 ```
 
@@ -57,6 +68,8 @@ ralph claude ~/code/my-app
 ralph copilot ~/code/my-app
 ralph codex ~/code/my-app
 ralph gemini ~/code/my-app
+ralph hermes ~/code/my-app
+ralph pi ~/code/my-app
 ralph opencode ~/code/my-app
 ```
 
@@ -87,8 +100,17 @@ You can also override it directly:
 ralph claude --check "npm run test:unit"
 ralph codex --check "pnpm test"
 ralph gemini --check "bun test"
+ralph hermes --check "bun test"
+ralph pi --check "bun test"
 ralph opencode --check "pytest -q"
 ```
+
+If your tasks already handle verification and you want to skip Ralph's runner-managed per-iteration check, disable it explicitly:
+```bash
+ralph claude --no-check
+```
+
+`--no-check` suppresses auto-detection and records verification as skipped. It cannot be combined with `--check`.
 
 ## Max loops
 Default is 8.
@@ -107,6 +129,8 @@ Optional:
 RALPH_MODEL=sonnet ralph claude
 RALPH_MODEL=gpt-5.4 ralph codex
 RALPH_MODEL=gemini-2.5-pro ralph gemini
+RALPH_MODEL=anthropic/claude-sonnet-4 ralph hermes
+RALPH_MODEL=sonnet ralph pi
 RALPH_MODEL=opencode/qwen3.6-plus-free ralph opencode
 ```
 
@@ -190,6 +214,8 @@ ralph claude --dry-run
 ralph copilot --dry-run ~/code/my-app
 ralph codex --dry-run ~/code/my-app
 ralph gemini --dry-run ~/code/my-app
+ralph hermes --dry-run ~/code/my-app
+ralph pi --dry-run ~/code/my-app
 ralph opencode --dry-run ~/code/my-app
 ```
 

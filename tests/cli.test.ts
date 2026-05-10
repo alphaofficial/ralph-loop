@@ -1,10 +1,11 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
-import { mkdirSync, rmSync, existsSync, writeFileSync, chmodSync, readFileSync } from "node:fs";
+import { mkdirSync, rmSync, existsSync, writeFileSync, chmodSync, readFileSync, mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const TMP = join(import.meta.dir, ".tmp-cli");
+let TMP = "";
 const CLI = join(import.meta.dir, "..", "src", "cli.ts");
-const BIN = join(TMP, "bin");
+let BIN = "";
 
 async function runWithInput(args: string[], input = ""): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   const proc = Bun.spawn(["bun", "run", CLI, ...args], {
@@ -88,8 +89,26 @@ writeFileSync(join(process.cwd(), "STATUS.md"), "# Current status\nNot started.\
   chmodSync(join(BIN, "gemini"), 0o755);
 }
 
+function installFakeClaudeCompletesTask() {
+  mkdirSync(BIN, { recursive: true });
+  writeFileSync(
+    join(BIN, "claude"),
+    String.raw`#!/usr/bin/env bun
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
+
+writeFileSync(join(process.cwd(), "TASKS.md"), "- [x] first task\n");
+writeFileSync(join(process.cwd(), "STATUS.md"), "# Current status\nTask done.\n");
+writeFileSync(join(process.cwd(), ".ralph", "commit-msg.txt"), "Complete first task\n");
+`,
+    { mode: 0o755 }
+  );
+  chmodSync(join(BIN, "claude"), 0o755);
+}
+
 beforeEach(() => {
-  rmSync(TMP, { recursive: true, force: true });
+  TMP = mkdtempSync(join(tmpdir(), "ralph-cli-"));
+  BIN = join(TMP, "bin");
   mkdirSync(TMP, { recursive: true });
 });
 
@@ -169,6 +188,18 @@ describe("cli", () => {
     expect(stderr).toContain("--check requires a value");
   });
 
+  test("--check and --no-check together exits 1", async () => {
+    const { stderr, exitCode } = await run("claude", "--check", "bun test", "--no-check");
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("--check cannot be used with --no-check");
+  });
+
+  test("--help lists no-check flag", async () => {
+    const { stdout } = await run("--help");
+    expect(stdout).toContain("--no-check");
+    expect(stdout).toContain("Disable runner-managed verification");
+  });
+
   test("--dry-run prints prompt without invoking", async () => {
     await run("init", TMP);
     const { stdout, exitCode } = await run("claude", "--dry-run", TMP);
@@ -181,6 +212,35 @@ describe("cli", () => {
     expect(existsSync(join(TMP, ".ralph", "prompt-claude.txt"))).toBe(false);
   });
 
+  test("--no-check disables auto-detected verification in dry run", async () => {
+    await run("init", TMP);
+    writeFileSync(join(TMP, "package.json"), JSON.stringify({ scripts: { test: "bun test" } }));
+
+    const { stdout, exitCode } = await run("claude", "--no-check", "--dry-run", TMP);
+
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("Verification command after your run: <disabled by --no-check>");
+    expect(stdout).not.toContain("Verification command after your run: bun test");
+  });
+
+  test("--no-check records disabled verification in status during a run", async () => {
+    installFakeClaudeCompletesTask();
+    await run("init", TMP);
+    writeFileSync(join(TMP, "TASKS.md"), "- [ ] first task\n");
+    writeFileSync(join(TMP, "package.json"), JSON.stringify({ scripts: { test: "bun test" } }));
+
+    const { stdout, exitCode } = await run("claude", "--no-check", TMP);
+
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("verification disabled by --no-check");
+    expect(stdout).not.toContain("no check command");
+
+    const status = readFileSync(join(TMP, "STATUS.md"), "utf-8");
+    expect(status).toContain("Verification: SKIPPED");
+    expect(status).toContain("Runner-managed verification disabled by --no-check");
+    expect(status).not.toContain("No verification command detected");
+  });
+
   test("--help lists copilot as a provider", async () => {
     const { stdout } = await run("--help");
     expect(stdout).toContain("copilot");
@@ -189,6 +249,16 @@ describe("cli", () => {
   test("--help lists gemini as a provider", async () => {
     const { stdout } = await run("--help");
     expect(stdout).toContain("gemini");
+  });
+
+  test("--help lists hermes as a provider", async () => {
+    const { stdout } = await run("--help");
+    expect(stdout).toContain("hermes");
+  });
+
+  test("--help lists pi as a provider", async () => {
+    const { stdout } = await run("--help");
+    expect(stdout).toContain("pi");
   });
 
   test("--help lists gen interactive flag", async () => {
@@ -210,10 +280,38 @@ describe("cli", () => {
     expect(stdout).toContain("Iteration number: 1");
   });
 
+  test("hermes --dry-run works", async () => {
+    await run("init", TMP);
+    const { stdout, exitCode } = await run("hermes", "--dry-run", TMP);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("Iteration number: 1");
+  });
+
+  test("pi --dry-run works", async () => {
+    await run("init", TMP);
+    const { stdout, exitCode } = await run("pi", "--dry-run", TMP);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("Iteration number: 1");
+  });
+
   test("gen gemini passes provider validation before requiring description", async () => {
     const { stderr, exitCode } = await run("gen", "gemini");
     expect(exitCode).toBe(1);
     expect(stderr).not.toContain("Unknown provider: gemini");
+    expect(stderr).toContain('Usage: ralph gen <provider> "description" [target_dir]');
+  });
+
+  test("gen hermes passes provider validation before requiring description", async () => {
+    const { stderr, exitCode } = await run("gen", "hermes");
+    expect(exitCode).toBe(1);
+    expect(stderr).not.toContain("Unknown provider: hermes");
+    expect(stderr).toContain('Usage: ralph gen <provider> "description" [target_dir]');
+  });
+
+  test("gen pi passes provider validation before requiring description", async () => {
+    const { stderr, exitCode } = await run("gen", "pi");
+    expect(exitCode).toBe(1);
+    expect(stderr).not.toContain("Unknown provider: pi");
     expect(stderr).toContain('Usage: ralph gen <provider> "description" [target_dir]');
   });
 
