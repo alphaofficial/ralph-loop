@@ -16,7 +16,8 @@ export function makePrompt(
   target: string,
   checkCmd: string,
   loopNo: number,
-  lastFailedOutput = ""
+  lastFailedOutput = "",
+  checkDisabled = false
 ) {
   const prd = readProjectFile(target, "PRD.md");
   const tasks = readProjectFile(target, "TASKS.md");
@@ -52,7 +53,7 @@ Rules:
 - Do not leave known issues unfixed before checking off the task.
 
 Iteration number: ${loopNo}
-Verification command after your run: ${checkCmd || "<none auto-detected>"}
+Verification command after your run: ${checkDisabled ? "<disabled by --no-check>" : checkCmd || "<none auto-detected>"}
 
 Write a one-line commit message describing what you changed to .ralph/commit-msg.txt.
 Ensure you follow the project's existing commit message style. Use git log to see project commit messsage format and follow it strictly.
@@ -93,10 +94,16 @@ function commandOutput(proc: { stdout?: Uint8Array; stderr?: Uint8Array }): stri
 export async function runCheck(
   target: string,
   checkCmd: string,
-  outFile: string
+  outFile: string,
+  checkDisabled = false
 ): Promise<number | typeof SKIP> {
   if (!checkCmd) {
-    writeFileSync(outFile, "No verification command detected.\n");
+    writeFileSync(
+      outFile,
+      checkDisabled
+        ? "Runner-managed verification disabled by --no-check.\n"
+        : "No verification command detected.\n"
+    );
     return SKIP;
   }
 
@@ -203,7 +210,8 @@ export async function mainLoop(
   target: string,
   maxLoops: number,
   checkCmd: string,
-  dryRun: boolean
+  dryRun: boolean,
+  checkDisabled = false
 ): Promise<number> {
   ensureTemplates(target);
 
@@ -219,7 +227,7 @@ export async function mainLoop(
     const total = formatDuration(Date.now() - loopStart);
     log(`loop ${loop} (${provider}) · total ${total}${retries > 0 ? ` · retry ${retries}/${maxLoops}` : ""}`);
 
-    const prompt = makePrompt(target, checkCmd, loop, lastFailedOutput);
+    const prompt = makePrompt(target, checkCmd, loop, lastFailedOutput, checkDisabled);
 
     if (dryRun) {
       log("dry run, not invoking " + provider);
@@ -249,9 +257,11 @@ export async function mainLoop(
     const checkOut = join(target, ".ralph", "check-output.txt");
 
     const stopCheck = startSpinner(
-      `verifying · ${checkCmd || "no check cmd"}`
+      checkDisabled
+        ? "verification disabled by --no-check"
+        : `verifying · ${checkCmd || "no check cmd"}`
     );
-    const code = await runCheck(target, checkCmd, checkOut);
+    const code = await runCheck(target, checkCmd, checkOut, checkDisabled);
     stopCheck();
 
     const output = first120Lines(checkOut);
@@ -261,7 +271,7 @@ export async function mainLoop(
     let summary: string;
     if (code === SKIP) {
       summary = "Verification: SKIPPED\n" + output;
-      log(`no check command · ${iterTime}`);
+      log(`${checkDisabled ? "verification disabled by --no-check" : "no check command"} · ${iterTime}`);
     } else if (code === 0) {
       summary = "Verification: PASS\n";
       if (checkCmd) summary += `Command: ${checkCmd}\n\n`;

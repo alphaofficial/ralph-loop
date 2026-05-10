@@ -105,6 +105,13 @@ ralph pi --check "bun test"
 ralph opencode --check "pytest -q"
 ```
 
+If your tasks already handle verification and you want to skip Ralph's runner-managed per-iteration check, disable it explicitly:
+```bash
+ralph claude --no-check
+```
+
+`--no-check` suppresses auto-detection and records verification as skipped. It cannot be combined with `--check`.
+
 ## Max loops
 Default is 8.
 

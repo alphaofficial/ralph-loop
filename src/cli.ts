@@ -31,6 +31,7 @@ Commands:
 Options:
   --max-loops N         Max consecutive failed retries per task (default: 8)
   --check CMD           Override verification command
+  --no-check            Disable runner-managed verification
   --dry-run             Show prompt without invoking
   -i, --interactive     With gen, dynamically ask provider-generated clarifying questions before writing files
   -h, --help            Show this help
@@ -46,6 +47,7 @@ function parseArgs() {
   let target = process.cwd();
   let maxLoops = parseInt(process.env.RALPH_MAX_LOOPS ?? "8", 10);
   let checkCmd = "";
+  let noCheck = false;
   let dryRun = false;
 
   // detect if invoked as ralph-claude, ralph-codex, etc.
@@ -92,6 +94,9 @@ function parseArgs() {
         }
         checkCmd = args[++i];
         break;
+      case "--no-check":
+        noCheck = true;
+        break;
       case "--dry-run":
         dryRun = true;
         break;
@@ -110,7 +115,12 @@ function parseArgs() {
     i++;
   }
 
-  return { command, target, maxLoops, checkCmd, dryRun };
+  if (checkCmd && noCheck) {
+    console.error("--check cannot be used with --no-check");
+    process.exit(1);
+  }
+
+  return { command, target, maxLoops, checkCmd, noCheck, dryRun };
 }
 
 // Signal handling for clean exit
@@ -127,7 +137,7 @@ process.on("SIGTERM", () => {
 process.on("unhandledRejection", () => {});
 
 async function main() {
-  const { command, target, maxLoops, checkCmd, dryRun } = parseArgs();
+  const { command, target, maxLoops, checkCmd, noCheck, dryRun } = parseArgs();
 
   if (!command || command === "help") {
     console.log(USAGE);
@@ -192,8 +202,8 @@ async function main() {
   }
 
   const provider = command as Provider;
-  const check = checkCmd || autoDetectCheck(target);
-  const code = await mainLoop(provider, target, maxLoops, check, dryRun);
+  const check = noCheck ? "" : checkCmd || autoDetectCheck(target);
+  const code = await mainLoop(provider, target, maxLoops, check, dryRun, noCheck);
   process.exit(code);
 }
 
