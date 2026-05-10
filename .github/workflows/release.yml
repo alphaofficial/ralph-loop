@@ -104,11 +104,30 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - uses: actions/download-artifact@v5
         with:
           path: artifacts
           merge-multiple: true
+
+      - name: Generate release notes
+        run: |
+          set -euo pipefail
+          git fetch --tags --quiet
+          PREVIOUS_TAG="$(git describe --tags --abbrev=0 "${{ needs.tag.outputs.tag }}^" 2>/dev/null || true)"
+          if [ -n "$PREVIOUS_TAG" ]; then
+            RANGE="$PREVIOUS_TAG..${{ needs.tag.outputs.tag }}"
+          else
+            RANGE="${{ needs.tag.outputs.tag }}"
+          fi
+
+          {
+            echo "## Changes"
+            echo
+            git log --pretty=format:'- %h %s' "$RANGE"
+          } > release-notes.md
 
       - name: Create GitHub release
         env:
@@ -116,6 +135,6 @@ jobs:
         run: |
           gh release create "${{ needs.tag.outputs.tag }}" \
             --title "${{ needs.tag.outputs.tag }}" \
-            --generate-notes \
+            --notes-file release-notes.md \
             --latest \
             artifacts/*
