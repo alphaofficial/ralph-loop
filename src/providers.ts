@@ -1,5 +1,5 @@
-export const LOOP_PROVIDERS = ["claude", "copilot", "codex", "gemini", "hermes", "opencode"] as const;
-export const GENERATION_PROVIDERS = ["claude", "copilot", "codex", "gemini", "hermes", "opencode"] as const;
+export const LOOP_PROVIDERS = ["claude", "copilot", "codex", "gemini", "hermes", "opencode", "pi"] as const;
+export const GENERATION_PROVIDERS = ["claude", "copilot", "codex", "gemini", "hermes", "opencode", "pi"] as const;
 
 export type Provider = (typeof LOOP_PROVIDERS)[number];
 
@@ -66,6 +66,12 @@ export function providerCommand(provider: Provider, target: string, prompt: stri
 
     case "hermes": {
       const args = ["hermes", "chat", "-q", prompt];
+      if (model) args.push("--model", model);
+      return { args };
+    }
+
+    case "pi": {
+      const args = ["pi", "-p", prompt];
       if (model) args.push("--model", model);
       return { args };
     }
