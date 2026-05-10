@@ -24,7 +24,9 @@ Commands:
   copilot               Run loop with GitHub Copilot CLI
   codex                 Run loop with Codex
   gemini                Run loop with Gemini CLI
+  hermes                Run loop with Hermes Agent
   opencode              Run loop with OpenCode
+  pi                    Run loop with Pi
 
 Options:
   --max-loops N         Max consecutive failed retries per task (default: 8)

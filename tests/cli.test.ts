@@ -191,6 +191,16 @@ describe("cli", () => {
     expect(stdout).toContain("gemini");
   });
 
+  test("--help lists hermes as a provider", async () => {
+    const { stdout } = await run("--help");
+    expect(stdout).toContain("hermes");
+  });
+
+  test("--help lists pi as a provider", async () => {
+    const { stdout } = await run("--help");
+    expect(stdout).toContain("pi");
+  });
+
   test("--help lists gen interactive flag", async () => {
     const { stdout } = await run("--help");
     expect(stdout).toContain("-i, --interactive");
@@ -214,6 +224,20 @@ describe("cli", () => {
     const { stderr, exitCode } = await run("gen", "gemini");
     expect(exitCode).toBe(1);
     expect(stderr).not.toContain("Unknown provider: gemini");
+    expect(stderr).toContain('Usage: ralph gen <provider> "description" [target_dir]');
+  });
+
+  test("gen hermes passes provider validation before requiring description", async () => {
+    const { stderr, exitCode } = await run("gen", "hermes");
+    expect(exitCode).toBe(1);
+    expect(stderr).not.toContain("Unknown provider: hermes");
+    expect(stderr).toContain('Usage: ralph gen <provider> "description" [target_dir]');
+  });
+
+  test("gen pi passes provider validation before requiring description", async () => {
+    const { stderr, exitCode } = await run("gen", "pi");
+    expect(exitCode).toBe(1);
+    expect(stderr).not.toContain("Unknown provider: pi");
     expect(stderr).toContain('Usage: ralph gen <provider> "description" [target_dir]');
   });
 
