@@ -220,6 +220,20 @@ describe("cli", () => {
     expect(stdout).toContain("Iteration number: 1");
   });
 
+  test("hermes --dry-run works", async () => {
+    await run("init", TMP);
+    const { stdout, exitCode } = await run("hermes", "--dry-run", TMP);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("Iteration number: 1");
+  });
+
+  test("pi --dry-run works", async () => {
+    await run("init", TMP);
+    const { stdout, exitCode } = await run("pi", "--dry-run", TMP);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("Iteration number: 1");
+  });
+
   test("gen gemini passes provider validation before requiring description", async () => {
     const { stderr, exitCode } = await run("gen", "gemini");
     expect(exitCode).toBe(1);
