@@ -189,7 +189,7 @@ export async function autoCommit(target: string, loop: number, canCommit = isGit
     proc.exited,
   ]);
   if (exitCode === 0) {
-    log(`committed: ${msg}`);
+    log(`✅ committed: ${msg}`);
   } else {
     const output = [stderr, stdout].map((text) => text.trim()).filter(Boolean).join("\n");
     err(`git commit failed${output ? `: ${output}` : ""}`);
@@ -236,7 +236,7 @@ export async function mainLoop(
     }
 
     const stopProvider = startSpinner(
-      `${provider} is working · loop ${loop}`
+      `🌀 ${provider} is working · loop ${loop}`
     );
     try {
       const providerCode = await invokeProvider(
@@ -276,12 +276,12 @@ export async function mainLoop(
       summary = "Verification: PASS\n";
       if (checkCmd) summary += `Command: ${checkCmd}\n\n`;
       summary += output;
-      log(`checks passed · ${iterTime}`);
+      log(`✅ checks passed · ${iterTime}`);
     } else {
       summary = "Verification: FAIL\n";
       if (checkCmd) summary += `Command: ${checkCmd}\n\n`;
       summary += output;
-      log(`checks failed · ${iterTime}`);
+      log(`⚠️ checks failed · ${iterTime}`);
     }
 
     writeFileSync(summaryFile, summary, { mode: 0o600 });
@@ -297,7 +297,7 @@ export async function mainLoop(
       retries++;
       if (retries >= maxLoops) {
         const total = formatDuration(Date.now() - loopStart);
-        err(`${retries} consecutive failures on the same task — giving up after ${total}`);
+        err(`⚠️ ${retries} consecutive failures on the same task — giving up after ${total}`);
         return 1;
       }
     }
