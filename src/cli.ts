@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
-import { basename, resolve, join } from "node:path";
-import { existsSync, rmSync } from "node:fs";
+import { basename, dirname, parse, resolve, join } from "node:path";
+import { chmodSync, existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
 import { ensureTemplates } from "./files";
 import { autoDetectCheck } from "./detect";
 import { mainLoop } from "./loop";
@@ -14,11 +14,70 @@ import {
 
 declare const RALPH_VERSION: string;
 const VERSION = typeof RALPH_VERSION !== "undefined" ? RALPH_VERSION : "dev";
+const REPO = "alphaofficial/ralph-loop";
+
+function ralphHome() {
+  if (process.env.RALPH_HOME) return process.env.RALPH_HOME;
+  if (!process.env.HOME) throw new Error("HOME is required when RALPH_HOME is not set");
+  return join(process.env.HOME, ".ralph");
+}
+
+function safeRalphHomeForDeletion() {
+  const home = resolve(ralphHome());
+  const root = parse(home).root;
+  if (home === root || dirname(home) === home || basename(home) !== ".ralph") {
+    throw new Error(`Refusing to uninstall unsafe Ralph home: ${home}`);
+  }
+  return home;
+}
+
+function platformBinary() {
+  const os = process.platform;
+  if (os !== "darwin" && os !== "linux") {
+    throw new Error(`Unsupported platform: ${os}`);
+  }
+  const arch = process.arch;
+  if (arch !== "x64" && arch !== "arm64") {
+    throw new Error(`Unsupported architecture: ${arch}`);
+  }
+  return `ralph-${os}-${arch}`;
+}
+
+async function upgradeRalph() {
+  const binDir = join(ralphHome(), "bin");
+  const binary = join(binDir, "ralph");
+  const download = join(binDir, "ralph.tmp");
+  const url = `https://github.com/${REPO}/releases/latest/download/${platformBinary()}`;
+  mkdirSync(binDir, { recursive: true });
+  rmSync(download, { force: true });
+  const code = await Bun.spawn(["curl", "-fsSL", url, "-o", download], {
+    stdout: "inherit",
+    stderr: "inherit",
+  }).exited;
+  if (code !== 0) return code;
+  try {
+    chmodSync(download, 0o755);
+    renameSync(download, binary);
+    if (process.platform === "darwin") {
+      await Bun.spawn(["xattr", "-cr", binary], {
+        stdout: "ignore",
+        stderr: "ignore",
+      }).exited.catch(() => {});
+    }
+  } catch (e) {
+    rmSync(download, { force: true });
+    throw e;
+  }
+  console.log(`Upgraded ralph to ${binary}`);
+  return 0;
+}
 
 const USAGE = `Usage: ralph <command> [target_dir] [options]
 
 Commands:
   init                  Initialize Ralph files with templates
+  upgrade               Upgrade Ralph to the latest release binary
+  uninstall             Remove Ralph from RALPH_HOME, default ~/.ralph
   gen <provider> "desc" Generate PRD, TASKS, STATUS from a description
   claude                Run loop with Claude Code
   copilot               Run loop with GitHub Copilot CLI
@@ -153,6 +212,27 @@ async function main() {
       `${reinit ? "Reinitialized" : "Initialized"} Ralph files in ${target}`
     );
     process.exit(0);
+  }
+
+  if (command === "upgrade") {
+    try {
+      process.exit(await upgradeRalph());
+    } catch (e) {
+      console.error(e instanceof Error ? e.message : e);
+      process.exit(1);
+    }
+  }
+
+  if (command === "uninstall") {
+    try {
+      const home = safeRalphHomeForDeletion();
+      rmSync(home, { recursive: true, force: true });
+      console.log(`Uninstalled Ralph from ${home}`);
+      process.exit(0);
+    } catch (e) {
+      console.error(e instanceof Error ? e.message : e);
+      process.exit(1);
+    }
   }
 
   if (command === "gen") {

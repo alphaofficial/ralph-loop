@@ -1,18 +1,22 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, rmSync, existsSync, writeFileSync, chmodSync, readFileSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 let TMP = "";
 const CLI = join(import.meta.dir, "..", "src", "cli.ts");
 let BIN = "";
 
-async function runWithInput(args: string[], input = ""): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+async function runWithInput(
+  args: string[],
+  input = "",
+  env: Record<string, string | undefined> = { RALPH_HOME: join(TMP, "home", ".ralph") }
+): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   const proc = Bun.spawn(["bun", "run", CLI, ...args], {
     stdout: "pipe",
     stderr: "pipe",
     stdin: input ? "pipe" : undefined,
-    env: { ...process.env, RALPH_CHECK_CMD: undefined, RALPH_MAX_LOOPS: undefined, PATH: `${BIN}:${process.env.PATH}` },
+    env: { ...process.env, RALPH_CHECK_CMD: undefined, RALPH_MAX_LOOPS: undefined, ...env, PATH: `${BIN}:${process.env.PATH}` },
   });
   if (input && proc.stdin) {
     proc.stdin.write(input);
@@ -30,12 +34,16 @@ async function run(...args: string[]): Promise<{ stdout: string; stderr: string;
   return runWithInput(args);
 }
 
+async function runWithEnv(args: string[], env: Record<string, string | undefined>): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+  return runWithInput(args, "", env);
+}
+
 async function runWithOpenInput(args: string[], input: string): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   const proc = Bun.spawn(["bun", "run", CLI, ...args], {
     stdout: "pipe",
     stderr: "pipe",
     stdin: "pipe",
-    env: { ...process.env, RALPH_CHECK_CMD: undefined, RALPH_MAX_LOOPS: undefined, PATH: `${BIN}:${process.env.PATH}` },
+    env: { ...process.env, RALPH_CHECK_CMD: undefined, RALPH_MAX_LOOPS: undefined, RALPH_HOME: join(TMP, "home", ".ralph"), PATH: `${BIN}:${process.env.PATH}` },
   });
   proc.stdin.write(input);
 
@@ -142,6 +150,127 @@ describe("cli", () => {
     expect(existsSync(join(TMP, "PRD.md"))).toBe(true);
     expect(existsSync(join(TMP, "TASKS.md"))).toBe(true);
     expect(existsSync(join(TMP, "STATUS.md"))).toBe(true);
+  });
+
+  test("upgrade downloads the latest binary into Ralph home", async () => {
+    mkdirSync(BIN, { recursive: true });
+    writeFileSync(
+      join(BIN, "curl"),
+      String.raw`#!/usr/bin/env bun
+import { writeFileSync } from "node:fs";
+
+const out = process.argv[process.argv.indexOf("-o") + 1];
+writeFileSync(out, "new binary");
+writeFileSync(out + ".args", JSON.stringify(process.argv.slice(2)));
+`,
+      { mode: 0o755 }
+    );
+    chmodSync(join(BIN, "curl"), 0o755);
+
+    const { stdout, exitCode } = await run("upgrade");
+
+    expect(exitCode).toBe(0);
+    const binary = join(TMP, "home", ".ralph", "bin", "ralph");
+    expect(readFileSync(binary, "utf-8")).toBe("new binary");
+    expect(readFileSync(`${binary}.tmp.args`, "utf-8")).toContain("releases/latest/download/ralph-");
+    expect(stdout).toContain("Upgraded ralph to");
+  });
+
+  test("upgrade preserves existing binary when download fails", async () => {
+    mkdirSync(BIN, { recursive: true });
+    writeFileSync(join(BIN, "curl"), "#!/usr/bin/env bash\nexit 22\n", { mode: 0o755 });
+    chmodSync(join(BIN, "curl"), 0o755);
+    const binary = join(TMP, "home", ".ralph", "bin", "ralph");
+    mkdirSync(join(TMP, "home", ".ralph", "bin"), { recursive: true });
+    writeFileSync(binary, "old binary");
+
+    const { exitCode } = await run("upgrade");
+
+    expect(exitCode).toBe(22);
+    expect(readFileSync(binary, "utf-8")).toBe("old binary");
+  });
+
+  test("upgrade removes temporary download when post-download setup fails", async () => {
+    mkdirSync(BIN, { recursive: true });
+    writeFileSync(
+      join(BIN, "curl"),
+      String.raw`#!/usr/bin/env bun
+import { writeFileSync } from "node:fs";
+
+const out = process.argv[process.argv.indexOf("-o") + 1];
+writeFileSync(out, "new binary");
+`,
+      { mode: 0o755 }
+    );
+    chmodSync(join(BIN, "curl"), 0o755);
+    const binary = join(TMP, "home", ".ralph", "bin", "ralph");
+    const download = join(TMP, "home", ".ralph", "bin", "ralph.tmp");
+    mkdirSync(binary, { recursive: true });
+
+    const { exitCode } = await run("upgrade");
+
+    expect(exitCode).toBe(1);
+    expect(existsSync(binary)).toBe(true);
+    expect(existsSync(download)).toBe(false);
+  });
+
+  test("uninstall fails closed when Ralph home cannot be resolved", async () => {
+    const { stderr, exitCode } = await runWithEnv(["uninstall"], { RALPH_HOME: undefined, HOME: undefined });
+
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("HOME is required when RALPH_HOME is not set");
+    expect(existsSync(join(TMP, ".ralph"))).toBe(false);
+  });
+
+  test("uninstall rejects filesystem root as Ralph home", async () => {
+    const root = dirname(TMP);
+    const sentinel = join(TMP, "keep.txt");
+    writeFileSync(sentinel, "keep");
+
+    const { stderr, exitCode } = await runWithEnv(["uninstall"], { RALPH_HOME: root });
+
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("Refusing to uninstall unsafe Ralph home");
+    expect(existsSync(root)).toBe(true);
+    expect(readFileSync(sentinel, "utf-8")).toBe("keep");
+  });
+
+  test("uninstall rejects temp parent directory as Ralph home", async () => {
+    const parent = join(TMP, "home");
+    const nested = join(parent, "project.txt");
+    mkdirSync(parent, { recursive: true });
+    writeFileSync(nested, "not ralph");
+
+    const { stderr, exitCode } = await runWithEnv(["uninstall"], { RALPH_HOME: parent });
+
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("Refusing to uninstall unsafe Ralph home");
+    expect(readFileSync(nested, "utf-8")).toBe("not ralph");
+  });
+
+  test("uninstall rejects non-.ralph path as Ralph home", async () => {
+    const unsafeHome = join(TMP, "home", "ralph");
+    const nested = join(unsafeHome, "bin", "ralph");
+    mkdirSync(join(unsafeHome, "bin"), { recursive: true });
+    writeFileSync(nested, "old binary");
+
+    const { stderr, exitCode } = await runWithEnv(["uninstall"], { RALPH_HOME: unsafeHome });
+
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("Refusing to uninstall unsafe Ralph home");
+    expect(readFileSync(nested, "utf-8")).toBe("old binary");
+  });
+
+  test("uninstall removes Ralph home", async () => {
+    const ralphHome = join(TMP, "home", ".ralph");
+    mkdirSync(join(ralphHome, "bin"), { recursive: true });
+    writeFileSync(join(ralphHome, "bin", "ralph"), "old binary");
+
+    const { stdout, exitCode } = await run("uninstall");
+
+    expect(exitCode).toBe(0);
+    expect(existsSync(ralphHome)).toBe(false);
+    expect(stdout).toContain("Uninstalled Ralph from");
   });
 
   test("re-running init wipes .ralph scratch dir, preserves edited PRD/TASKS/STATUS, and reports 'Reinitialized'", async () => {
