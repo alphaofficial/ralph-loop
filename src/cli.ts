@@ -87,7 +87,13 @@ async function upgradeRalph() {
     throw e;
   }
   const newVersion = await binaryVersion(binary);
-  console.log(`Upgraded ralph from ${oldVersion} to ${newVersion}`);
+  if (oldVersion === "not installed") {
+    console.log(`Installed ralph ${newVersion}`);
+  } else if (oldVersion === newVersion) {
+    console.log(`Ralph is already up to date: ${newVersion}`);
+  } else {
+    console.log(`Upgraded ralph from ${oldVersion} to ${newVersion}`);
+  }
   return 0;
 }
 

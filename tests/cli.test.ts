@@ -180,6 +180,52 @@ writeFileSync(out + ".args", JSON.stringify(process.argv.slice(2)));
     expect(stdout).not.toContain(binary);
   });
 
+  test("upgrade reports installed version when no previous binary exists", async () => {
+    mkdirSync(BIN, { recursive: true });
+    writeFileSync(
+      join(BIN, "curl"),
+      String.raw`#!/usr/bin/env bun
+import { writeFileSync } from "node:fs";
+
+const out = process.argv[process.argv.indexOf("-o") + 1];
+writeFileSync(out, "#!/usr/bin/env bun\nconsole.log('2.0.0');\n");
+`,
+      { mode: 0o755 }
+    );
+    chmodSync(join(BIN, "curl"), 0o755);
+
+    const { stdout, exitCode } = await run("upgrade");
+
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("Installed ralph 2.0.0");
+    expect(stdout).not.toContain("Upgraded ralph from not installed to 2.0.0");
+  });
+
+  test("upgrade reports already up to date when installed version matches downloaded version", async () => {
+    mkdirSync(BIN, { recursive: true });
+    writeFileSync(
+      join(BIN, "curl"),
+      String.raw`#!/usr/bin/env bun
+import { writeFileSync } from "node:fs";
+
+const out = process.argv[process.argv.indexOf("-o") + 1];
+writeFileSync(out, "#!/usr/bin/env bun\nconsole.log('2.0.0');\n");
+`,
+      { mode: 0o755 }
+    );
+    chmodSync(join(BIN, "curl"), 0o755);
+    const binary = join(TMP, "home", ".ralph", "bin", "ralph");
+    mkdirSync(join(TMP, "home", ".ralph", "bin"), { recursive: true });
+    writeFileSync(binary, "#!/usr/bin/env bun\nconsole.log('2.0.0');\n");
+    chmodSync(binary, 0o755);
+
+    const { stdout, exitCode } = await run("upgrade");
+
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("Ralph is already up to date: 2.0.0");
+    expect(stdout).not.toContain("Upgraded ralph from 2.0.0 to 2.0.0");
+  });
+
   test("upgrade preserves existing binary when download fails", async () => {
     mkdirSync(BIN, { recursive: true });
     writeFileSync(join(BIN, "curl"), "#!/usr/bin/env bash\nexit 22\n", { mode: 0o755 });
