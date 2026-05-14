@@ -43,6 +43,23 @@ function platformBinary() {
   return `ralph-${os}-${arch}`;
 }
 
+async function binaryVersion(binary: string) {
+  if (!existsSync(binary)) return "not installed";
+  try {
+    const proc = Bun.spawn([binary, "--version"], {
+      stdout: "pipe",
+      stderr: "ignore",
+    });
+    const [version, code] = await Promise.all([
+      new Response(proc.stdout).text(),
+      proc.exited,
+    ]);
+    return code === 0 ? version.trim() : "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
 async function upgradeRalph() {
   const binDir = join(ralphHome(), "bin");
   const binary = join(binDir, "ralph");
@@ -50,6 +67,7 @@ async function upgradeRalph() {
   const url = `https://github.com/${REPO}/releases/latest/download/${platformBinary()}`;
   mkdirSync(binDir, { recursive: true });
   rmSync(download, { force: true });
+  const oldVersion = await binaryVersion(binary);
   const code = await Bun.spawn(["curl", "-fsSL", url, "-o", download], {
     stdout: "inherit",
     stderr: "inherit",
@@ -68,7 +86,8 @@ async function upgradeRalph() {
     rmSync(download, { force: true });
     throw e;
   }
-  console.log(`Upgraded ralph to ${binary}`);
+  const newVersion = await binaryVersion(binary);
+  console.log(`Upgraded ralph from ${oldVersion} to ${newVersion}`);
   return 0;
 }
 
