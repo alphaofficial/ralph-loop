@@ -152,7 +152,7 @@ describe("cli", () => {
     expect(existsSync(join(TMP, "STATUS.md"))).toBe(true);
   });
 
-  test("upgrade downloads the latest binary into Ralph home", async () => {
+  test("upgrade downloads the latest binary into Ralph home and reports old and new versions", async () => {
     mkdirSync(BIN, { recursive: true });
     writeFileSync(
       join(BIN, "curl"),
@@ -160,20 +160,24 @@ describe("cli", () => {
 import { writeFileSync } from "node:fs";
 
 const out = process.argv[process.argv.indexOf("-o") + 1];
-writeFileSync(out, "new binary");
+writeFileSync(out, "#!/usr/bin/env bun\nconsole.log('2.0.0');\n");
 writeFileSync(out + ".args", JSON.stringify(process.argv.slice(2)));
 `,
       { mode: 0o755 }
     );
     chmodSync(join(BIN, "curl"), 0o755);
+    const binary = join(TMP, "home", ".ralph", "bin", "ralph");
+    mkdirSync(join(TMP, "home", ".ralph", "bin"), { recursive: true });
+    writeFileSync(binary, "#!/usr/bin/env bun\nconsole.log('1.0.0');\n");
+    chmodSync(binary, 0o755);
 
     const { stdout, exitCode } = await run("upgrade");
 
     expect(exitCode).toBe(0);
-    const binary = join(TMP, "home", ".ralph", "bin", "ralph");
-    expect(readFileSync(binary, "utf-8")).toBe("new binary");
+    expect(readFileSync(binary, "utf-8")).toContain("2.0.0");
     expect(readFileSync(`${binary}.tmp.args`, "utf-8")).toContain("releases/latest/download/ralph-");
-    expect(stdout).toContain("Upgraded ralph to");
+    expect(stdout).toContain("Upgraded ralph from 1.0.0 to 2.0.0");
+    expect(stdout).not.toContain(binary);
   });
 
   test("upgrade preserves existing binary when download fails", async () => {
