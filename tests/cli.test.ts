@@ -2,6 +2,7 @@ import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, rmSync, existsSync, writeFileSync, chmodSync, readFileSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { REVIEW_PROMPT } from "../src/review";
 
 let TMP = "";
 const CLI = join(import.meta.dir, "..", "src", "cli.ts");
@@ -91,6 +92,23 @@ writeFileSync(join(process.cwd(), "args-seen.txt"), JSON.stringify(process.argv.
 writeFileSync(join(process.cwd(), "PRD.md"), "# Goal\nGenerated\n");
 writeFileSync(join(process.cwd(), "TASKS.md"), "- [ ] Generated task\n");
 writeFileSync(join(process.cwd(), "STATUS.md"), "# Current status\nNot started.\n");
+`,
+    { mode: 0o755 }
+  );
+  chmodSync(join(BIN, "gemini"), 0o755);
+}
+
+function installFakeGeminiCapturesPrompt() {
+  mkdirSync(BIN, { recursive: true });
+  writeFileSync(
+    join(BIN, "gemini"),
+    String.raw`#!/usr/bin/env bun
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
+
+const prompt = process.argv.includes("-p") ? process.argv[process.argv.indexOf("-p") + 1] ?? "" : "";
+writeFileSync(join(process.cwd(), "prompt-seen.txt"), prompt);
+writeFileSync(join(process.cwd(), "args-seen.txt"), JSON.stringify(process.argv.slice(2)));
 `,
     { mode: 0o755 }
   );
@@ -445,6 +463,11 @@ writeFileSync(out, "new binary");
     expect(stdout).toContain("-i, --interactive");
   });
 
+  test("--help documents review target", async () => {
+    const { stdout } = await run("--help");
+    expect(stdout).toContain("review <provider> [target_dir]");
+  });
+
   test("copilot --dry-run works", async () => {
     await run("init", TMP);
     const { stdout, exitCode } = await run("copilot", "--dry-run", TMP);
@@ -471,6 +494,38 @@ writeFileSync(out, "new binary");
     const { stdout, exitCode } = await run("pi", "--dry-run", TMP);
     expect(exitCode).toBe(0);
     expect(stdout).toContain("Iteration number: 1");
+  });
+
+  test("review invokes provider with simplification review prompt", async () => {
+    installFakeGeminiCapturesPrompt();
+
+    const { exitCode } = await run("review", "gemini", TMP);
+
+    expect(exitCode).toBe(0);
+    const prompt = readFileSync(join(TMP, "prompt-seen.txt"), "utf-8");
+    expect(prompt).toContain(REVIEW_PROMPT);
+    expect(prompt).toContain("The project planning artifacts are embedded below.");
+    expect(prompt).toContain("<PRD>");
+    expect(prompt).toContain("<TASKS>");
+    expect(prompt).toContain("<STATUS>");
+    expect(prompt).not.toContain("<GIT_STATUS>");
+    expect(prompt).not.toContain("<GIT_DIFF_STAT>");
+    expect(prompt).not.toContain("<GIT_STAGED_DIFF_STAT>");
+    expect(readFileSync(join(TMP, "args-seen.txt"), "utf-8")).toContain('"-p"');
+  });
+
+  test("review rejects unknown provider", async () => {
+    const { stderr, exitCode } = await run("review", "unknown", TMP);
+
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("Unknown provider: unknown");
+  });
+
+  test("review requires provider", async () => {
+    const { stderr, exitCode } = await run("review");
+
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("Usage: ralph review <provider> [target_dir]");
   });
 
   test("gen gemini passes provider validation before requiring description", async () => {
