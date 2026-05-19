@@ -5,7 +5,7 @@ import { ensureTemplates } from "./files";
 import { autoDetectCheck } from "./detect";
 import { mainLoop } from "./loop";
 import { generate } from "./generate";
-import { review } from "./review";
+import { runCapturedReview } from "./review";
 import { cleanup, log } from "./ui";
 import {
   GENERATION_PROVIDERS,
@@ -120,7 +120,7 @@ Options:
   --check CMD           Override verification command
   --no-check            Disable runner-managed verification
   --dry-run             Show prompt without invoking
-  -i, --interactive     With gen, dynamically ask provider-generated clarifying questions before writing files
+  -i, --interactive     With gen, dynamically ask clarifying questions before writing files
   -h, --help            Show this help
 
 Environment:
@@ -320,7 +320,7 @@ async function main() {
     }
     const reviewTarget = args[1] ? resolve(args[1]) : process.cwd();
     try {
-      process.exit(await review(reviewProvider, reviewTarget, process.env.RALPH_MODEL));
+      process.exit(await runCapturedReview(reviewProvider, reviewTarget, process.env.RALPH_MODEL));
     } catch (e) {
       console.error(e instanceof Error ? e.message : e);
       process.exit(1);

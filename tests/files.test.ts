@@ -1,20 +1,20 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import {
-  mkdirSync,
+  mkdtempSync,
   writeFileSync,
   readFileSync,
   rmSync,
   existsSync,
   statSync,
 } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ensureTemplates, updateRunnerBlock, ensureGitExcludes } from "../src/files";
 
-const TMP = join(import.meta.dir, ".tmp-files");
+let TMP = "";
 
 beforeEach(() => {
-  rmSync(TMP, { recursive: true, force: true });
-  mkdirSync(TMP, { recursive: true });
+  TMP = mkdtempSync(join(tmpdir(), "ralph-files-"));
 });
 
 afterEach(() => {

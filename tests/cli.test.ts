@@ -81,7 +81,15 @@ const prompt = process.argv.includes("-p")
 if (prompt.includes("Generate clarifying questions")) {
   writeFileSync(join(process.cwd(), "question-prompt-seen.txt"), prompt);
   writeFileSync(join(process.cwd(), "question-args-seen.txt"), JSON.stringify(process.argv.slice(2)));
-  const questions = prompt.includes("billing")
+  const questions = prompt.includes("complex onboarding")
+    ? [
+        "Who are the primary users?",
+        "Which platforms need support?",
+        "Does onboarding require SSO?",
+        "Should we import existing data?",
+        "What success metric matters most?",
+      ]
+    : prompt.includes("billing")
     ? ["Which payment processor should billing use?", "Which customer regions need tax handling?", "Should billing support subscriptions?"]
     : ["Which chat channels should support agents use?", "What escalation SLA should support follow?", "Which customer data should agents see?"];
   console.log(JSON.stringify(questions));
@@ -109,6 +117,7 @@ import { join } from "node:path";
 const prompt = process.argv.includes("-p") ? process.argv[process.argv.indexOf("-p") + 1] ?? "" : "";
 writeFileSync(join(process.cwd(), "prompt-seen.txt"), prompt);
 writeFileSync(join(process.cwd(), "args-seen.txt"), JSON.stringify(process.argv.slice(2)));
+console.log("Strengths: solid structure\n<RALPH_REVIEW_TASKS>\n- [ ] Tighten review regression coverage\n</RALPH_REVIEW_TASKS>");
 `,
     { mode: 0o755 }
   );
@@ -496,8 +505,11 @@ writeFileSync(out, "new binary");
     expect(stdout).toContain("Iteration number: 1");
   });
 
-  test("review invokes provider with simplification review prompt", async () => {
+  test("review captures raw output and appends follow-up tasks", async () => {
     installFakeGeminiCapturesPrompt();
+    writeFileSync(join(TMP, "PRD.md"), "# PRD\nShip review context\n");
+    writeFileSync(join(TMP, "TASKS.md"), "- [x] initial task\n");
+    writeFileSync(join(TMP, "STATUS.md"), "# Status\nGreen\n");
 
     const { exitCode } = await run("review", "gemini", TMP);
 
@@ -512,6 +524,12 @@ writeFileSync(out, "new binary");
     expect(prompt).not.toContain("<GIT_DIFF_STAT>");
     expect(prompt).not.toContain("<GIT_STAGED_DIFF_STAT>");
     expect(readFileSync(join(TMP, "args-seen.txt"), "utf-8")).toContain('"-p"');
+    expect(readFileSync(join(TMP, ".ralph", "review-output.md"), "utf-8")).toContain(
+      "Tighten review regression coverage"
+    );
+    expect(readFileSync(join(TMP, "TASKS.md"), "utf-8")).toContain(
+      "## Review follow-ups\n\n- [ ] Tighten review regression coverage"
+    );
   });
 
   test("review rejects unknown provider", async () => {
@@ -587,6 +605,17 @@ writeFileSync(out, "new binary");
     expect(existsSync(join(TMP, "question-prompt-seen.txt"))).toBe(false);
   });
 
+  test("gen prompt includes decision-tracking status sections", async () => {
+    installFakeGemini();
+
+    const { exitCode } = await run("gen", "gemini", "Add billing", TMP);
+
+    expect(exitCode).toBe(0);
+    const prompt = readFileSync(join(TMP, "prompt-seen.txt"), "utf-8");
+    expect(prompt).toContain("# Decisions made");
+    expect(prompt).toContain("# Tradeoffs and deviations");
+  });
+
   test("gen accepts quoted descriptions that begin with a dash", async () => {
     installFakeGemini();
 
@@ -626,6 +655,28 @@ writeFileSync(out, "new binary");
     expect(prompt).toContain("Which chat channels should support agents use?\nEmail and in-app");
     expect(prompt).toContain("What escalation SLA should support follow?\nFour business hours");
     expect(prompt).toContain("Which customer data should agents see?\nOrder history only");
+  });
+
+  test("gen --interactive supports up to five clarifying questions", async () => {
+    installFakeGemini();
+
+    const { stdout, exitCode } = await runWithInput(
+      ["gen", "gemini", "Add complex onboarding", TMP, "--interactive"],
+      "Admins\nWeb and mobile\nYes\nImport CSV\nActivation rate\n"
+    );
+
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("Who are the primary users?");
+    expect(stdout).toContain("Which platforms need support?");
+    expect(stdout).toContain("Does onboarding require SSO?");
+    expect(stdout).toContain("Should we import existing data?");
+    expect(stdout).toContain("What success metric matters most?");
+    const prompt = readFileSync(join(TMP, "prompt-seen.txt"), "utf-8");
+    expect(prompt).toContain("Who are the primary users?\nAdmins");
+    expect(prompt).toContain("Which platforms need support?\nWeb and mobile");
+    expect(prompt).toContain("Does onboarding require SSO?\nYes");
+    expect(prompt).toContain("Should we import existing data?\nImport CSV");
+    expect(prompt).toContain("What success metric matters most?\nActivation rate");
   });
 
   test("gen -i enables interactive clarification", async () => {

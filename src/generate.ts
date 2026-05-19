@@ -4,11 +4,13 @@ import { log, startSpinner } from "./ui";
 import { invokeProvider, providerCommand, type Provider } from "./providers";
 import { ensureGitExcludes } from "./files";
 
+const MAX_CLARIFYING_QUESTIONS = 5;
+
 const QUESTION_PROMPT = (description: string) => `Generate clarifying questions for creating Ralph project planning files.
 
 The user wants to build: ${description}
 
-Look at the existing codebase context if useful, then return only a JSON array of 3 concise, request-specific questions. Do not include markdown, prose, or answers.`;
+Look at the existing codebase context, then return only a JSON array of 1 to ${MAX_CLARIFYING_QUESTIONS} concise, request-specific questions. Do not include markdown, prose, or answers.`;
 
 export function parseQuestions(output: string): string[] {
   let parsed: unknown;
@@ -23,7 +25,8 @@ export function parseQuestions(output: string): string[] {
   }
 
   if (
-    parsed.length !== 3 ||
+    parsed.length < 1 ||
+    parsed.length > MAX_CLARIFYING_QUESTIONS ||
     parsed.some((question) => typeof question !== "string" || question.trim().length === 0)
   ) {
     throw new Error("Provider returned invalid clarifying questions");
@@ -127,6 +130,12 @@ ${clarifications}
    # Last attempt
    N/A
 
+   # Decisions made
+   None yet.
+
+   # Tradeoffs and deviations
+   None yet.
+
    # Known issues
    None.
 
@@ -139,6 +148,7 @@ Rules:
 - Tasks should be flat, no hierarchy, no titles or sections in TASKS.md. Just a simple checklist.
 - Look at the existing codebase to inform requirements and constraints.
 - Write all three files to the project root directory. Overwrite them completely if they already exist.
+- In STATUS.md, keep the decisions/tradeoffs sections so future loop runs have an explicit place to record spec gaps, non-spec decisions, and notable deviations.
 - Add requirement that before each step is done, there are test coverage for new changes, and all tests pass.
 - Add requirement that after all steps are done, it is properly tested or verified before declaring the work complete.
 - Do NOT create any other files.

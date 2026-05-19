@@ -2,7 +2,7 @@ import { describe, expect, spyOn, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { GENERATION_PROVIDERS, LOOP_PROVIDERS, invokeProvider, providerCommand } from "../src/providers";
+import { GENERATION_PROVIDERS, LOOP_PROVIDERS, captureProvider, invokeProvider, providerCommand } from "../src/providers";
 
 describe("providers", () => {
   test("generation providers include gemini", () => {
@@ -42,6 +42,32 @@ describe("providers", () => {
         cwd: target,
         stdout: "inherit",
         stderr: "inherit",
+      });
+    } finally {
+      spawn.mockRestore();
+      rmSync(target, { recursive: true, force: true });
+    }
+  });
+
+  test("captureProvider returns provider stdout without changing streaming invokeProvider", async () => {
+    const target = mkdtempSync(join(tmpdir(), "ralph-providers-"));
+
+    const spawn = spyOn(Bun, "spawn").mockReturnValue({
+      stdout: new Response("review tasks").body,
+      stderr: new Response("diagnostics").body,
+      exited: Promise.resolve(0),
+    } as ReturnType<typeof Bun.spawn>);
+
+    try {
+      const result = await captureProvider("gemini", target, "Review this.", "gemini-2.5-pro");
+
+      expect(result).toEqual({ code: 0, stdout: "review tasks", stderr: "diagnostics" });
+      expect(spawn).toHaveBeenCalledTimes(1);
+      expect(spawn.mock.calls[0]?.[0]).toEqual(["gemini", "-p", "Review this.", "--model", "gemini-2.5-pro"]);
+      expect(spawn.mock.calls[0]?.[1]).toMatchObject({
+        cwd: target,
+        stdout: "pipe",
+        stderr: "pipe",
       });
     } finally {
       spawn.mockRestore();

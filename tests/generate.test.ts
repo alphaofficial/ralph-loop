@@ -2,8 +2,18 @@ import { describe, expect, test } from "bun:test";
 import { parseQuestions } from "../src/generate";
 
 describe("parseQuestions", () => {
-  test("parses exactly three string questions from JSON output", () => {
-    expect(parseQuestions('["One?", "Two?", "Three?"]')).toEqual(["One?", "Two?", "Three?"]);
+  test("accepts a single clarifying question", () => {
+    expect(parseQuestions('["One?"]')).toEqual(["One?"]);
+  });
+
+  test("accepts up to five string questions from JSON output", () => {
+    expect(parseQuestions('["One?", "Two?", "Three?", "Four?", "Five?"]')).toEqual([
+      "One?",
+      "Two?",
+      "Three?",
+      "Four?",
+      "Five?",
+    ]);
   });
 
   test("rejects invalid JSON", () => {
@@ -28,7 +38,13 @@ describe("parseQuestions", () => {
     expect(() => parseQuestions('["One?", "", "Three?"]')).toThrow("Provider returned invalid clarifying questions");
   });
 
-  test("rejects wrong question count", () => {
-    expect(() => parseQuestions('["One?", "Two?"]')).toThrow("Provider returned invalid clarifying questions");
+  test("rejects zero questions", () => {
+    expect(() => parseQuestions("[]")).toThrow("Provider returned invalid clarifying questions");
+  });
+
+  test("rejects more than five questions", () => {
+    expect(() => parseQuestions('["One?", "Two?", "Three?", "Four?", "Five?", "Six?"]')).toThrow(
+      "Provider returned invalid clarifying questions"
+    );
   });
 });

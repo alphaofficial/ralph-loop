@@ -96,3 +96,27 @@ export async function invokeProvider(
 
   return await proc.exited;
 }
+
+export async function captureProvider(
+  provider: Provider,
+  target: string,
+  prompt: string,
+  model?: string
+): Promise<{ code: number; stdout: string; stderr: string }> {
+  const command = providerCommand(provider, target, prompt, model);
+  const proc = Bun.spawn(command.args, {
+    cwd: target,
+    env: command.env,
+    stdin: command.stdin,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+
+  const [stdout, stderr, code] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
+
+  return { code, stdout, stderr };
+}

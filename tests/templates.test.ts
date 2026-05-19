@@ -20,6 +20,8 @@ describe("templates", () => {
 
   test("STATUS_TEMPLATE has expected sections", () => {
     expect(STATUS_TEMPLATE).toContain("# Current status");
+    expect(STATUS_TEMPLATE).toContain("# Decisions made");
+    expect(STATUS_TEMPLATE).toContain("# Tradeoffs and deviations");
     expect(STATUS_TEMPLATE).toContain("# Next step");
   });
 

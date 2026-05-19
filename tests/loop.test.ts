@@ -1,16 +1,30 @@
-import { describe, expect, test, beforeEach, afterEach } from "bun:test";
+import { describe, expect, test, beforeEach, afterEach, mock } from "bun:test";
 import { chmodSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { makePrompt, runCheck, allTasksComplete, autoCommit, SKIP } from "../src/loop";
+import { tmpdir } from "node:os";
+const invokeProvider = mock(async (_provider: string, target: string) => {
+  const tasks = readFileSync(join(target, "TASKS.md"), "utf-8");
+  const next = tasks.replace(/- \[ \] /, "- [x] ");
+  writeFileSync(join(target, "TASKS.md"), next);
+  writeFileSync(join(target, ".ralph", "commit-msg.txt"), "Complete task\n");
+  return 0;
+});
+const captureProvider = mock(async () => ({ code: 0, stdout: "", stderr: "" }));
+mock.module("../src/providers", () => ({ captureProvider, invokeProvider }));
 
-const TMP = join(import.meta.dir, ".tmp-loop");
+const { makePrompt, runCheck, allTasksComplete, autoCommit, mainLoop, SKIP } = await import("../src/loop");
+
+let TMP = "";
 
 beforeEach(() => {
+  TMP = join(tmpdir(), `ralph-loop-${process.pid}-${Date.now()}`);
   rmSync(TMP, { recursive: true, force: true });
   mkdirSync(join(TMP, ".ralph"), { recursive: true });
 });
 
 afterEach(() => {
+  invokeProvider.mockClear();
+  captureProvider.mockClear();
   rmSync(TMP, { recursive: true, force: true });
 });
 
@@ -68,6 +82,13 @@ describe("makePrompt", () => {
     expect(content).toContain("Do not mark the task complete while any tests are failing.");
     expect(content).toContain(
       "All tests must pass first, even if the failures look unrelated or pre-existing."
+    );
+  });
+
+  test("requires STATUS to capture decisions and tradeoffs", () => {
+    const content = makePrompt(TMP, "npm test", 1);
+    expect(content).toContain(
+      "Record any spec gaps, decisions, tradeoffs, or notable deviations you had to make in STATUS.md."
     );
   });
 
