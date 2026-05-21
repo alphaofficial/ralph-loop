@@ -43,6 +43,7 @@ Rules:
 - Record any implementation notes, spec gaps, decisions, tradeoffs, or notable deviations you had to make in STATUS.md.
 - Do not touch other unchecked tasks.
 - If you encounter any code or test issues, fix them and update STATUS.md with what you did to fix them.
+- Do not add tests which simply restate the implementation. These provide zero confidence. Avoid spurious tests. 
 - Do not leave known issues unfixed before checking off the task.
 
 Iteration number: ${loopNo}
