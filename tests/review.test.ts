@@ -166,6 +166,27 @@ review prose
     }
   });
 
+  test("captured review still succeeds when TASKS.md is missing", async () => {
+    const target = mkdtempSync(join(tmpdir(), "ralph-review-"));
+    try {
+      mkdirSync(join(target, ".ralph"), { recursive: true });
+      captureProvider.mockResolvedValueOnce({
+        code: 0,
+        stdout: "Notes\n<RALPH_REVIEW_TASKS>\n- [ ] Add audit log\n</RALPH_REVIEW_TASKS>\n",
+        stderr: "",
+      });
+
+      const code = await runCapturedReview("gemini", target, "gemini-2.5-pro");
+
+      expect(code).toBe(0);
+      expect(readFileSync(join(target, ".ralph", "review-output.md"), "utf-8")).toBe(
+        "Notes\n<RALPH_REVIEW_TASKS>\n- [ ] Add audit log\n</RALPH_REVIEW_TASKS>\n"
+      );
+    } finally {
+      rmSync(target, { recursive: true, force: true });
+    }
+  });
+
   test("logs review progress and completion", async () => {
     invokeProvider.mockImplementationOnce(async () => {
       await Bun.sleep(120);

@@ -107,7 +107,12 @@ export function parseReviewTasks(output: string): string[] {
 export function appendReviewFollowups(target: string, tasks: string[]): number {
   if (tasks.length === 0) return 0;
   const file = join(target, "TASKS.md");
-  const content = readFileSync(file, "utf-8");
+  let content: string;
+  try {
+    content = readFileSync(file, "utf-8");
+  } catch {
+    return 0;
+  }
   const existing = new Set(
     content.split("\n").map((line) => line.match(/^- \[[ x]\] (\S.*)$/)?.[1]?.trim()).filter(Boolean)
   );
