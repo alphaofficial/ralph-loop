@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { GENERATION_PROVIDERS, LOOP_PROVIDERS, captureProvider, invokeProvider, providerCommand } from "../src/providers";
 
-describe("providers", () => {
+describe.serial("providers", () => {
   test("generation providers include gemini", () => {
     expect(GENERATION_PROVIDERS).toContain("gemini");
   });
