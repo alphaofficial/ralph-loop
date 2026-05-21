@@ -88,7 +88,7 @@ describe("makePrompt", () => {
   test("requires STATUS to capture decisions and tradeoffs", () => {
     const content = makePrompt(TMP, "npm test", 1);
     expect(content).toContain(
-      "Record any spec gaps, decisions, tradeoffs, or notable deviations you had to make in STATUS.md."
+      "Record any implementation notes, spec gaps, decisions, tradeoffs, or notable deviations you had to make in STATUS.md."
     );
   });
 
