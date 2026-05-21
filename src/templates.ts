@@ -27,6 +27,12 @@ Not started.
 # Last attempt
 N/A
 
+# Decisions made
+None yet.
+
+# Tradeoffs and deviations
+None yet.
+
 # Known issues
 None yet.
 

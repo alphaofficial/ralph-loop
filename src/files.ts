@@ -8,6 +8,14 @@ import {
 import { join, dirname } from "node:path";
 import { PRD_TEMPLATE, TASKS_TEMPLATE, STATUS_TEMPLATE } from "./templates";
 
+export function readProjectFile(target: string, filename: string): string {
+  try {
+    return readFileSync(join(target, filename), "utf-8").trimEnd();
+  } catch {
+    return `${filename} could not be read.`;
+  }
+}
+
 export function ensureGitExcludes(target: string) {
   const result = Bun.spawnSync(["git", "-C", target, "rev-parse", "--is-inside-work-tree"]);
   if (result.exitCode !== 0) return;
