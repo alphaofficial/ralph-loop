@@ -2,6 +2,9 @@ import { describe, expect, test, beforeEach, afterEach, mock } from "bun:test";
 import { chmodSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+const LOOP_PROVIDERS = ["claude", "copilot", "codex", "gemini", "hermes", "opencode", "pi"] as const;
+const GENERATION_PROVIDERS = LOOP_PROVIDERS;
+const providerCommand = mock(() => ({ args: ["true"] }));
 const invokeProvider = mock(async (_provider: string, target: string) => {
   const tasks = readFileSync(join(target, "TASKS.md"), "utf-8");
   const next = tasks.replace(/- \[ \] /, "- [x] ");
@@ -10,7 +13,13 @@ const invokeProvider = mock(async (_provider: string, target: string) => {
   return 0;
 });
 const captureProvider = mock(async () => ({ code: 0, stdout: "", stderr: "" }));
-mock.module("../src/providers", () => ({ captureProvider, invokeProvider }));
+mock.module("../src/providers", () => ({
+  captureProvider,
+  GENERATION_PROVIDERS,
+  invokeProvider,
+  LOOP_PROVIDERS,
+  providerCommand,
+}));
 
 const { makePrompt, runCheck, allTasksComplete, autoCommit, mainLoop, SKIP } = await import("../src/loop");
 
