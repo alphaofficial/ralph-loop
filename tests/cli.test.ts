@@ -511,9 +511,13 @@ writeFileSync(out, "new binary");
     writeFileSync(join(TMP, "TASKS.md"), "- [x] initial task\n");
     writeFileSync(join(TMP, "STATUS.md"), "# Status\nGreen\n");
 
-    const { exitCode } = await run("review", "gemini", TMP);
+    const { stdout, stderr, exitCode } = await run("review", "gemini", TMP);
 
     expect(exitCode).toBe(0);
+    expect(stderr).toContain("Reviewing project with gemini");
+    expect(stdout).toContain("✅ Review complete");
+    expect(stdout).toContain(".ralph/review-output.md");
+    expect(stdout).toContain("Added 1 review follow-up task");
     const prompt = readFileSync(join(TMP, "prompt-seen.txt"), "utf-8");
     expect(prompt).toContain(REVIEW_PROMPT);
     expect(prompt).toContain("The project planning artifacts are embedded below.");

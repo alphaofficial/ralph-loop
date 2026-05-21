@@ -19,13 +19,17 @@ export function startSpinner(msg: string): () => void {
   if (activeTimer) clearInterval(activeTimer);
   let frame = 0;
   const start = Date.now();
-  activeTimer = setInterval(() => {
+
+  const render = () => {
     const elapsed = Math.floor((Date.now() - start) / 1000);
     process.stderr.write(
       `\r${DIM}[ralph]${RESET} ${FRAMES[frame % FRAMES.length]} ${msg} (${elapsed}s)  ${CLEAR_LINE}`
     );
     frame++;
-  }, 100);
+  };
+
+  render();
+  activeTimer = setInterval(render, 100);
 
   return () => {
     if (activeTimer) {

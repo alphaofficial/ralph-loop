@@ -13,7 +13,7 @@ mock.module("../src/providers", () => ({
   invokeProvider,
 }));
 
-const { REVIEW_PROMPT, appendReviewFollowups, parseReviewTasks, review, runCapturedReview } = await import("../src/review");
+const { REVIEW_PROMPT, appendReviewFollowups, normalizeReviewTaskBlockFormatting, parseReviewTasks, review, runCapturedReview, sanitizeReviewOutput } = await import("../src/review");
 
 describe("review", () => {
   beforeEach(() => {
@@ -56,6 +56,37 @@ review prose
 `);
 
     expect(tasks).toEqual(["First follow-up", "Second follow-up"]);
+  });
+
+  test("normalizes review task block markers onto their own lines", () => {
+    expect(normalizeReviewTaskBlockFormatting("<RALPH_REVIEW_TASKS>- [ ] Fix parser</RALPH_REVIEW_TASKS>")).toBe(
+      "<RALPH_REVIEW_TASKS>\n- [ ] Fix parser\n</RALPH_REVIEW_TASKS>"
+    );
+    expect(normalizeReviewTaskBlockFormatting("- [ ] Fix parser </RALPH_REVIEW_TASKS>")).toBe(
+      "- [ ] Fix parser\n</RALPH_REVIEW_TASKS>"
+    );
+    expect(normalizeReviewTaskBlockFormatting("<RALPH_REVIEW_TASKS>\n[ ] Fix parser </RALPH_REVIEW_TASKS>")).toBe(
+      "<RALPH_REVIEW_TASKS>\n- [ ] Fix parser\n</RALPH_REVIEW_TASKS>"
+    );
+  });
+
+  test("sanitizes review output by removing provider noise after review task block", () => {
+    expect(
+      sanitizeReviewOutput(
+        "Ready\n<RALPH_REVIEW_TASKS>\n[ ] Fix parser </RALPH_REVIEW_TASKS>\nError executing tool run_shell_command\n"
+      )
+    ).toBe("Ready\n<RALPH_REVIEW_TASKS>\n- [ ] Fix parser\n</RALPH_REVIEW_TASKS>\n");
+  });
+
+  test("parses task text without a same-line closing marker preceded by whitespace", () => {
+    const tasks = parseReviewTasks(`
+<RALPH_REVIEW_TASKS>
+- [ ] Normalize blank-line spacing in src/review.ts:makeReviewPrompt by folding newlines into the makeGitRangeSection helper. </RALPH_REVIEW_TASKS>
+`);
+
+    expect(tasks).toEqual([
+      "Normalize blank-line spacing in src/review.ts:makeReviewPrompt by folding newlines into the makeGitRangeSection helper.",
+    ]);
   });
 
   test("appends deduplicated review tasks under review follow-ups", () => {
@@ -115,7 +146,7 @@ review prose
       writeFileSync(join(target, "STATUS.md"), "Green");
       captureProvider.mockResolvedValueOnce({
         code: 0,
-        stdout: "Notes\n<RALPH_REVIEW_TASKS>\n- [ ] Add audit log\n</RALPH_REVIEW_TASKS>\n",
+        stdout: "Notes\n<RALPH_REVIEW_TASKS>- [ ] Add audit log </RALPH_REVIEW_TASKS>\n",
         stderr: "warning\n",
       });
 

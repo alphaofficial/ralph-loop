@@ -48,12 +48,45 @@ export async function runCapturedReview(
   target: string,
   model?: string
 ): Promise<number> {
-  const result = await captureProvider(provider, target, makeReviewPrompt(target), model);
-  const raw = result.stdout + (result.stderr ? `\n${result.stderr}` : "");
-  mkdirSync(join(target, ".ralph"), { recursive: true });
-  writeFileSync(join(target, ".ralph", "review-output.md"), raw, { mode: 0o600 });
-  if (result.code === 0) appendReviewFollowups(target, parseReviewTasks(result.stdout));
-  return result.code;
+  const stop = startSpinner(`🔎 Reviewing project with ${provider}`);
+  try {
+    const result = await captureProvider(provider, target, makeReviewPrompt(target), model);
+    const stdout = sanitizeReviewOutput(result.stdout);
+    const raw = stdout + (result.stderr ? `\n${result.stderr}` : "");
+    const outputPath = join(target, ".ralph", "review-output.md");
+    mkdirSync(join(target, ".ralph"), { recursive: true });
+    writeFileSync(outputPath, raw, { mode: 0o600 });
+
+    if (result.code === 0) {
+      const appended = appendReviewFollowups(target, parseReviewTasks(stdout));
+      log("✅ Review complete");
+      log(`📄 Saved review output to ${outputPath}`);
+      if (appended > 0) {
+        log(`📝 Added ${appended} review follow-up task${appended === 1 ? "" : "s"}`);
+      }
+    }
+
+    return result.code;
+  } finally {
+    stop();
+  }
+}
+
+export function sanitizeReviewOutput(output: string): string {
+  const normalized = normalizeReviewTaskBlockFormatting(output);
+  const lastReviewTaskEnd = normalized.lastIndexOf("</RALPH_REVIEW_TASKS>");
+  if (lastReviewTaskEnd === -1) return normalized;
+  return `${normalized.slice(0, lastReviewTaskEnd + "</RALPH_REVIEW_TASKS>".length).trimEnd()}\n`;
+}
+
+export function normalizeReviewTaskBlockFormatting(output: string): string {
+  return output
+    .replace(/<RALPH_REVIEW_TASKS>([^\n])/g, "<RALPH_REVIEW_TASKS>\n$1")
+    .replace(/([^\n])\s*<\/RALPH_REVIEW_TASKS>/g, "$1\n</RALPH_REVIEW_TASKS>")
+    .replace(
+      /(<RALPH_REVIEW_TASKS>\n[\s\S]*?\n<\/RALPH_REVIEW_TASKS>)/g,
+      (block) => block.replace(/^(\s*)\[ \] /gm, "$1- [ ] ")
+    );
 }
 
 export function parseReviewTasks(output: string): string[] {
@@ -61,7 +94,7 @@ export function parseReviewTasks(output: string): string[] {
   const tasks: string[] = [];
   for (const match of output.matchAll(/<RALPH_REVIEW_TASKS>\s*([\s\S]*?)\s*<\/RALPH_REVIEW_TASKS>/g)) {
     for (const line of match[1].split("\n")) {
-      const task = line.match(/^- \[ \] (\S.*)$/)?.[1]?.trim();
+      const task = line.match(/^- \[ \] (\S.*)$/)?.[1]?.replace(/\s*<\/RALPH_REVIEW_TASKS>\s*$/, "").trim();
       if (task && !seen.has(task)) {
         seen.add(task);
         tasks.push(task);
