@@ -25,7 +25,7 @@ describe.serial("providers", () => {
     expect(GENERATION_PROVIDERS).toEqual(LOOP_PROVIDERS);
   });
 
-  test("invokeProvider uses Gemini CLI prompt mode", async () => {
+  test.serial("invokeProvider uses Gemini CLI prompt mode", async () => {
     const target = mkdtempSync(join(tmpdir(), "ralph-providers-"));
 
     const spawn = spyOn(Bun, "spawn").mockReturnValue({
@@ -49,7 +49,7 @@ describe.serial("providers", () => {
     }
   });
 
-  test("captureProvider returns provider stdout without changing streaming invokeProvider", async () => {
+  test.serial("captureProvider returns provider stdout without changing streaming invokeProvider", async () => {
     const target = mkdtempSync(join(tmpdir(), "ralph-providers-"));
 
     const spawn = spyOn(Bun, "spawn").mockReturnValue({
@@ -75,7 +75,7 @@ describe.serial("providers", () => {
     }
   });
 
-  test("invokeProvider passes Gemini model overrides", async () => {
+  test.serial("invokeProvider passes Gemini model overrides", async () => {
     const target = mkdtempSync(join(tmpdir(), "ralph-providers-"));
 
     const spawn = spyOn(Bun, "spawn").mockReturnValue({
@@ -98,7 +98,7 @@ describe.serial("providers", () => {
     }
   });
 
-  test("invokeProvider still uses Gemini prompt mode when interactive flag is requested", async () => {
+  test.serial("invokeProvider still uses Gemini prompt mode when interactive flag is requested", async () => {
     const target = mkdtempSync(join(tmpdir(), "ralph-providers-"));
 
     const spawn = spyOn(Bun, "spawn").mockReturnValue({
@@ -138,7 +138,7 @@ describe.serial("providers", () => {
     expect(command.stdin).toBeUndefined();
   });
 
-  test("invokeProvider keeps Hermes headless when interactive flag is requested", async () => {
+  test.serial("invokeProvider keeps Hermes headless when interactive flag is requested", async () => {
     const target = mkdtempSync(join(tmpdir(), "ralph-providers-"));
 
     const spawn = spyOn(Bun, "spawn").mockReturnValue({
@@ -186,7 +186,7 @@ describe.serial("providers", () => {
     expect(command.stdin).toBeUndefined();
   });
 
-  test("invokeProvider keeps Pi headless when interactive flag is requested", async () => {
+  test.serial("invokeProvider keeps Pi headless when interactive flag is requested", async () => {
     const target = mkdtempSync(join(tmpdir(), "ralph-providers-"));
 
     const spawn = spyOn(Bun, "spawn").mockReturnValue({
@@ -217,29 +217,31 @@ describe.serial("providers", () => {
     }
   });
 
-  test.each(GENERATION_PROVIDERS)("invokeProvider keeps %s in one-shot mode when interactive flag is requested", async (provider) => {
-    const target = mkdtempSync(join(tmpdir(), "ralph-providers-"));
+  for (const provider of GENERATION_PROVIDERS) {
+    test.serial(`invokeProvider keeps ${provider} in one-shot mode when interactive flag is requested`, async () => {
+      const target = mkdtempSync(join(tmpdir(), "ralph-providers-"));
 
-    const spawn = spyOn(Bun, "spawn").mockReturnValue({
-      exited: Promise.resolve(0),
-    } as ReturnType<typeof Bun.spawn>);
+      const spawn = spyOn(Bun, "spawn").mockReturnValue({
+        exited: Promise.resolve(0),
+      } as ReturnType<typeof Bun.spawn>);
 
-    try {
-      await invokeProvider(provider, target, "Start by clarifying.", undefined, true);
+      try {
+        await invokeProvider(provider, target, "Start by clarifying.", undefined, true);
 
-      const args = spawn.mock.calls[0]?.[0] as string[];
-      const options = spawn.mock.calls[0]?.[1] as { stdin?: unknown } | undefined;
-      if (provider === "claude") {
-        expect(args).toContain("-p");
-      } else {
-        expect(args).toContain("Start by clarifying.");
+        const args = spawn.mock.calls[0]?.[0] as string[];
+        const options = spawn.mock.calls[0]?.[1] as { stdin?: unknown } | undefined;
+        if (provider === "claude") {
+          expect(args).toContain("-p");
+        } else {
+          expect(args).toContain("Start by clarifying.");
+        }
+        expect(options?.stdin).not.toBe("inherit");
+      } finally {
+        spawn.mockRestore();
+        rmSync(target, { recursive: true, force: true });
       }
-      expect(options?.stdin).not.toBe("inherit");
-    } finally {
-      spawn.mockRestore();
-      rmSync(target, { recursive: true, force: true });
-    }
-  });
+    });
+  }
 
   test.each(GENERATION_PROVIDERS)("providerCommand keeps %s in one-shot prompt mode for captured helper calls", (provider) => {
     const command = providerCommand(provider, "/tmp/project", "Generate clarifying questions", "model-name");
