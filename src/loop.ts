@@ -40,7 +40,7 @@ Rules:
 - Check off that one task (- [x]) in TASKS.md.
 - Update STATUS.md with what you changed and what the next task should be.
 - Keep STATUS.md concrete, short, and truthful.
-- Record any spec gaps, decisions, tradeoffs, or notable deviations you had to make in STATUS.md.
+- Record any implementation notes, spec gaps, decisions, tradeoffs, or notable deviations you had to make in STATUS.md.
 - Do not touch other unchecked tasks.
 - If you encounter any code or test issues, fix them and update STATUS.md with what you did to fix them.
 - Do not leave known issues unfixed before checking off the task.
