@@ -112,6 +112,9 @@ ${clarifications}
    ## Requirements
    (bulleted list of specific requirements)
 
+   ## Technical requirements
+   (usually 3-7 concise bullets covering relevant interfaces/APIs/CLI flags/file formats/events/data contracts, affected modules/systems, high-level implementation strategy, and any integration/migration/compatibility/security/performance constraints; brief pseudocode or examples are okay when they clarify a contract or flow; avoid code-heavy detail, lengthy pseudocode, and low-level minutiae; use a short TBD/open question bullet if uncertain)
+
    ## Constraints
    (bulleted list of constraints — e.g. use existing patterns, keep changes small)
 
@@ -144,6 +147,7 @@ ${clarifications}
 
 Rules:
 - Be specific and actionable, not vague.
+- Keep PRD.md concise. The Technical requirements section should clarify implementation-relevant shape without bloating the PRD: usually 3-7 short bullets; brief pseudocode or examples are okay when they clarify a contract or flow; no code blocks, code-heavy detail, lengthy pseudocode, or low-level minutiae.
 - Tasks should be small enough for one AI iteration each.
 - Tasks should be flat, no hierarchy, no titles or sections in TASKS.md. Just a simple checklist.
 - Look at the existing codebase to inform requirements and constraints.

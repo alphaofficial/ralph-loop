@@ -6,6 +6,11 @@ Describe what done looks like.
 - requirement 2
 - requirement 3
 
+## Technical requirements
+- interfaces/APIs/CLI flags/file formats/events/data contracts impacted
+- affected modules or systems
+- high-level implementation approach and relevant integration/migration/compatibility/security/performance constraints
+
 ## Constraints
 - constraint 1
 - constraint 2
