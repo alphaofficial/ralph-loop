@@ -154,6 +154,11 @@ Add Stripe subscriptions.
 - handle webhook updates
 - show current plan in billing UI
 
+## Technical requirements
+- add checkout API route and webhook handler using existing auth and billing modules
+- persist Stripe customer/subscription IDs in the existing user billing data shape
+- verify webhook signatures and keep billing UI compatible with current plan display state
+
 ## Constraints
 - use existing stack patterns
 - keep the change small
