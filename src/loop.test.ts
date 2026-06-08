@@ -120,9 +120,6 @@ describe("runAutoReviewGate", () => {
     expect(reviewCalls).toBe(1);
     expect(fixCalls).toBe(0);
     expect(readSummary(target)).toContain("Auto-review: PASS");
-    expect(
-      readFileSync(join(target, ".ralph", "iteration-1-auto-review-1-result.json"), "utf-8")
-    ).toContain(`"status": "approved"`);
   });
 
   test("requests focused fixes and re-reviews before approving", async () => {

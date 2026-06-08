@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { writeFileSync, readFileSync } from "node:fs";
+import { writeFileSync, readFileSync, rmSync } from "node:fs";
 import { log, err, startSpinner, formatDuration } from "./ui";
 import { ensureTemplates, readProjectFile, updateRunnerBlock } from "./files";
 import {
@@ -247,20 +247,30 @@ function combineOutput(stdout: string, stderr: string): string {
   return [stdout.trimEnd(), stderr.trimEnd()].filter(Boolean).join("\n");
 }
 
-function writeAutoReviewAttemptArtifacts(
+function autoReviewArtifactBase(target: string, loop: number, attempt: number): string {
+  return join(target, ".ralph", `iteration-${loop}-auto-review-${attempt}`);
+}
+
+function writeAutoReviewOutputArtifact(
   target: string,
   loop: number,
   attempt: number,
-  prompt: string,
-  rawOutput: string,
+  rawOutput: string
+): string {
+  const path = `${autoReviewArtifactBase(target, loop, attempt)}-output.txt`;
+  writeFileSync(path, rawOutput ? `${rawOutput}\n` : "", { mode: 0o600 });
+  return path;
+}
+
+function writeAutoReviewResultArtifact(
+  target: string,
+  loop: number,
+  attempt: number,
   result: AutoReviewResult
-) {
-  const base = join(target, ".ralph", `iteration-${loop}-auto-review-${attempt}`);
-  writeFileSync(`${base}-prompt.txt`, prompt, { mode: 0o600 });
-  writeFileSync(`${base}-output.txt`, rawOutput ? `${rawOutput}\n` : "", { mode: 0o600 });
-  writeFileSync(`${base}-result.json`, JSON.stringify(result, null, 2) + "\n", {
-    mode: 0o600,
-  });
+): string {
+  const path = `${autoReviewArtifactBase(target, loop, attempt)}-result.json`;
+  writeFileSync(path, JSON.stringify(result, null, 2) + "\n", { mode: 0o600 });
+  return path;
 }
 
 function writeAutoReviewFixPromptArtifact(
@@ -268,12 +278,10 @@ function writeAutoReviewFixPromptArtifact(
   loop: number,
   attempt: number,
   prompt: string
-) {
-  writeFileSync(
-    join(target, ".ralph", `iteration-${loop}-auto-review-fix-${attempt}.prompt.txt`),
-    prompt,
-    { mode: 0o600 }
-  );
+): string {
+  const path = join(target, ".ralph", `iteration-${loop}-auto-review-fix-${attempt}.prompt.txt`);
+  writeFileSync(path, prompt, { mode: 0o600 });
+  return path;
 }
 
 function writeAutoReviewSummary(
@@ -288,6 +296,10 @@ function writeAutoReviewSummary(
     { mode: 0o600 }
   );
   if (updateStatus) updateRunnerBlock(join(target, "STATUS.md"), summary);
+}
+
+function cleanupAutoReviewArtifacts(paths: string[]) {
+  for (const path of paths) rmSync(path, { force: true });
 }
 
 export async function runAutoReviewGate(
@@ -309,6 +321,8 @@ export async function runAutoReviewGate(
     return { approved: true };
   }
 
+  const debugArtifactPaths: string[] = [];
+
   for (let attempt = 1; attempt <= ctx.maxReviewLoops; attempt++) {
     const reviewScope = captureIterationReviewScopeFn(ctx.target, gitBaseline);
 
@@ -327,14 +341,6 @@ export async function runAutoReviewGate(
       );
       reviewOutput = combineOutput(captured.stdout, captured.stderr);
       reviewResult = parseAutoReviewResult(reviewOutput);
-      writeAutoReviewAttemptArtifacts(
-        ctx.target,
-        state.loop,
-        attempt,
-        reviewPrompt,
-        reviewOutput,
-        reviewResult
-      );
       if (captured.code !== 0) {
         errFn(`${ctx.provider} auto-review exited with code ${captured.code}`);
       }
@@ -349,6 +355,7 @@ Reason: failed to run reviewer: ${e instanceof Error ? e.message : e}`;
     stopReview();
 
     if (isAutoReviewApproved(reviewResult)) {
+      cleanupAutoReviewArtifacts(debugArtifactPaths);
       const summary = `Auto-review: PASS
 Attempts: ${attempt}/${ctx.maxReviewLoops}`;
       writeAutoReviewSummary(ctx.target, state.loop, summary);
@@ -357,6 +364,16 @@ Attempts: ${attempt}/${ctx.maxReviewLoops}`;
     }
 
     if (reviewResult.status === "invalid") {
+      const outputArtifact = writeAutoReviewOutputArtifact(
+        ctx.target,
+        state.loop,
+        attempt,
+        reviewOutput
+      );
+      debugArtifactPaths.push(outputArtifact);
+      debugArtifactPaths.push(
+        writeAutoReviewResultArtifact(ctx.target, state.loop, attempt, reviewResult)
+      );
       const summary = `Auto-review: FAIL
 Reason: invalid reviewer output (${reviewResult.reason})
 Message: ${reviewResult.message}
@@ -367,6 +384,9 @@ Artifact: .ralph/iteration-${state.loop}-auto-review-${attempt}-output.txt`;
     }
 
     if (attempt >= ctx.maxReviewLoops) {
+      debugArtifactPaths.push(
+        writeAutoReviewResultArtifact(ctx.target, state.loop, attempt, reviewResult)
+      );
       const summary = `Auto-review: FAIL
 Reason: exhausted review loop after ${ctx.maxReviewLoops} attempts
 Artifact: .ralph/iteration-${state.loop}-auto-review-${attempt}-result.json`;
@@ -384,7 +404,9 @@ Artifact: .ralph/iteration-${state.loop}-auto-review-${attempt}-result.json`;
       reviewScope,
       reviewResult
     );
-    writeAutoReviewFixPromptArtifact(ctx.target, state.loop, attempt, fixPrompt);
+    debugArtifactPaths.push(
+      writeAutoReviewFixPromptArtifact(ctx.target, state.loop, attempt, fixPrompt)
+    );
 
     const stopFix = startSpinnerFn(
       `🛠️ ${ctx.provider} is addressing auto-review blockers · pass ${attempt}/${ctx.maxReviewLoops - 1}`
