@@ -8,7 +8,7 @@ import {
 } from "./review-scope";
 import { createMachine } from "./state-machine";
 import { invokeProvider, type Provider } from "./providers";
-import { makePrompt } from "./prompt";
+import { makeLoopPrompt } from "./prompts";
 import {
   SKIP,
   allTasksComplete,
@@ -53,7 +53,7 @@ async function runProviderAttempt(runtime: LoopRuntime, progress: LoopProgress):
   const total = formatDuration(Date.now() - runtime.loopStart);
   log(`loop ${progress.loop} (${runtime.provider}) · total ${total}${progress.retries > 0 ? ` · retry ${progress.retries}/${runtime.maxLoops}` : ""}`);
 
-  const prompt = makePrompt(runtime.target, runtime.checkCmd, progress.loop, progress.lastFailedOutput, runtime.checkDisabled);
+  const prompt = makeLoopPrompt(runtime.target, runtime.checkCmd, progress.loop, progress.lastFailedOutput, runtime.checkDisabled);
   const stopProvider = startSpinner(`🌀 ${runtime.provider} is working · loop ${progress.loop}`);
   try {
     const providerCode = await invokeProvider(runtime.provider, runtime.target, prompt, process.env.RALPH_MODEL);
@@ -192,7 +192,7 @@ export async function mainLoop(
 
   if (dryRun) {
     log("dry run, not invoking " + provider);
-    console.log(makePrompt(target, checkCmd, 1, "", checkDisabled));
+    console.log(makeLoopPrompt(target, checkCmd, 1, "", checkDisabled));
     return 0;
   }
 

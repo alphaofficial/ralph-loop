@@ -1,4 +1,4 @@
-import { MAX_CLARIFYING_QUESTIONS, makeClarifyingQuestionsPrompt } from "./prompt";
+import { MAX_CLARIFYING_QUESTIONS, makeClarifyingQuestionsPrompt } from "./prompts";
 import { providerCommand, type Provider } from "./providers";
 
 export function parseQuestions(output: string): string[] {

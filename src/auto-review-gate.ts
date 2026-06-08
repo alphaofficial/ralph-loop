@@ -2,16 +2,13 @@ import {
   mkdirSync,
   readFileSync,
   rmSync,
-  writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
 import {
-  AUTO_REVIEW_OUTPUT_SCHEMA,
   cleanupAutoReviewArtifacts,
   combineOutput,
   formatAutoReviewFeedback,
   isAutoReviewApproved,
-  makeAutoReviewPrompt,
   parseAutoReviewResult,
   type AutoReviewResult,
   writeAutoReviewOutputArtifact,
@@ -22,7 +19,7 @@ import {
   captureReviewScope,
   type ReviewScopeBaseline,
 } from "./review-scope";
-import { makePrompt } from "./prompt";
+import { makeAutoReviewPrompt, makeLoopPrompt } from "./prompts";
 import { invokeProvider, type Provider } from "./providers";
 import { err, log, startSpinner } from "./ui";
 
@@ -46,6 +43,14 @@ type AutoReviewGateDeps = {
   errFn?: typeof err;
   startSpinnerFn?: typeof startSpinner;
 };
+
+function autoReviewOutputSchemaPath(target: string): string {
+  return join(target, ".ralph", "auto-review-output-schema.json");
+}
+
+function readAutoReviewOutputSchema(target: string): string {
+  return readFileSync(autoReviewOutputSchemaPath(target), "utf-8");
+}
 
 export async function runAutoReviewGate(
   config: AutoReviewGateConfig,
@@ -148,7 +153,7 @@ Artifact: .ralph/iteration-${progress.loop}-auto-review-${attempt}-result.json`;
     logFn(
       `auto-review requested ${reviewResult.changes.length} blocker${reviewResult.changes.length === 1 ? "" : "s"}`
     );
-    const retryPrompt = makePrompt(
+    const retryPrompt = makeLoopPrompt(
       config.target,
       config.checkCmd,
       progress.loop,
@@ -229,7 +234,7 @@ function autoReviewProviderCommand(
         "--output-format",
         "json",
         "--json-schema",
-        JSON.stringify(AUTO_REVIEW_OUTPUT_SCHEMA),
+        readAutoReviewOutputSchema(target),
       ];
       if (model) args.push("--model", model);
       return { args, stdin: new Blob([prompt]), env: { ...process.env } };
@@ -291,11 +296,7 @@ async function captureCodexAutoReviewProvider(
     `auto-review-provider-${process.pid}-${Date.now()}`
   );
   const outputLastMessageFile = `${artifactBase}-last-message.json`;
-  const outputSchemaFile = `${artifactBase}-schema.json`;
-
-  writeFileSync(outputSchemaFile, JSON.stringify(AUTO_REVIEW_OUTPUT_SCHEMA), {
-    mode: 0o600,
-  });
+  const outputSchemaFile = autoReviewOutputSchemaPath(target);
 
   const args = [
     providerBinary("codex"),
@@ -331,7 +332,6 @@ async function captureCodexAutoReviewProvider(
   }
 
   rmSync(outputLastMessageFile, { force: true });
-  rmSync(outputSchemaFile, { force: true });
 
   if (finalMessage) {
     return { code, stdout: finalMessage, stderr: "" };

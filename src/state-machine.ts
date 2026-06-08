@@ -10,6 +10,14 @@ type MachineEvent<Definition extends MachineDefinition> = {
 }[keyof Definition["states"]] &
   string;
 
+  /**
+   * Creates a state machine based on the provided definition. 
+   * Current State + Event = Next State
+   * @example
+   * ```ts
+   * { initialState: "A", states: { A: { event1: "B" }, B: { event2: "A" } } }
+   * ```
+   */
 export function createMachine<const Definition extends MachineDefinition>(
   definition: Definition
 ) {

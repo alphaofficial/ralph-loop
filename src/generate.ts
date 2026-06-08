@@ -2,9 +2,9 @@ import { join } from "node:path";
 import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { log, startSpinner } from "./ui";
 import { invokeProvider, type Provider } from "./providers";
-import { ensureGitExcludes } from "./files";
+import { ensureGitExcludes, ensureTemplates } from "./files";
 import { collectClarifications, generateClarifyingQuestions } from "./clarifications";
-import { makeGeneratePrompt } from "./prompt";
+import { makeGeneratePrompt } from "./prompts";
 
 export async function generate(
   provider: Provider,
@@ -42,6 +42,8 @@ export async function generate(
       throw new Error(`${provider} did not create ${file}`);
     }
   }
+
+  ensureTemplates(target);
 
   log("✅ Generated PRD.md, TASKS.md, STATUS.md");
 }

@@ -9,6 +9,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { ensureTemplates } from "./files";
 import {
   SKIP,
   allTasksComplete,
@@ -38,6 +39,46 @@ function tmpProject() {
   mkdirSync(join(target, ".ralph"), { recursive: true });
   return target;
 }
+
+describe("ensureTemplates", () => {
+  test("writes the auto-review output schema under .ralph", () => {
+    const target = tmpProject();
+
+    ensureTemplates(target);
+
+    expect(
+      JSON.parse(
+        readFileSync(
+          join(target, ".ralph", "auto-review-output-schema.json"),
+          "utf-8"
+        )
+      )
+    ).toEqual({
+      type: "object",
+      additionalProperties: false,
+      required: ["status", "changes"],
+      properties: {
+        status: {
+          type: "string",
+          enum: ["approved", "changes_requested"],
+        },
+        changes: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["file", "line", "requested_change"],
+            properties: {
+              file: { type: "string" },
+              line: { type: "integer" },
+              requested_change: { type: "string" },
+            },
+          },
+        },
+      },
+    });
+  });
+});
 
 describe("allTasksComplete", () => {
   test("returns false while any task is unchecked", () => {

@@ -50,6 +50,17 @@ export function ensureTemplates(target: string) {
     if (!existsSync(path)) writeFileSync(path, template);
   }
 
+  const autoReviewOutputSchemaFile = join(
+    target,
+    ".ralph",
+    "auto-review-output-schema.json"
+  );
+  const autoReviewOutputSchemaContent =
+    '{"type":"object","additionalProperties":false,"required":["status","changes"],"properties":{"status":{"type":"string","enum":["approved","changes_requested"]},"changes":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["file","line","requested_change"],"properties":{"file":{"type":"string"},"line":{"type":"integer"},"requested_change":{"type":"string"}}}}}}\n';
+  writeFileSync(autoReviewOutputSchemaFile, autoReviewOutputSchemaContent, {
+    mode: 0o600,
+  });
+
   ensureGitExcludes(target);
 }
 

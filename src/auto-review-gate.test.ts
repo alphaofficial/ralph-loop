@@ -17,8 +17,9 @@ import {
   type AutoReviewGateConfig,
   type AutoReviewGateProgress,
 } from "./auto-review-gate";
+import { ensureTemplates } from "./files";
 import { captureReviewScopeBaseline } from "./review-scope";
-import { makePrompt } from "./prompt";
+import { makeLoopPrompt } from "./prompts";
 import type { AutoReviewChangesRequested } from "./helpers";
 
 const TASKS_TEXT = `- [x] Define auto-review result parsing/validation and failure behavior.
@@ -77,7 +78,7 @@ afterEach(() => {
 function tmpProject() {
   const target = mkdtempSync(join(tmpdir(), "ralph-auto-review-provider-"));
   cleanupTargets.push(target);
-  mkdirSync(join(target, ".ralph"), { recursive: true });
+  ensureTemplates(target);
   return target;
 }
 
@@ -85,7 +86,7 @@ function createAutoReviewProject(loop = 1) {
   const target = mkdtempSync(join(tmpdir(), "ralph-loop-"));
   cleanupTargets.push(target);
 
-  mkdirSync(join(target, ".ralph"), { recursive: true });
+  ensureTemplates(target);
   mkdirSync(join(target, "src"), { recursive: true });
 
   writeFileSync(join(target, "PRD.md"), PRD_TEXT);
@@ -124,7 +125,11 @@ function readSummary(target: string, loop = 1): string {
 
 function autoReviewArtifacts(target: string): string[] {
   return readdirSync(join(target, ".ralph"))
-    .filter((name) => name.includes("auto-review"))
+    .filter(
+      (name) =>
+        name.includes("auto-review") &&
+        name !== "auto-review-output-schema.json"
+    )
     .sort();
 }
 
@@ -278,7 +283,7 @@ Auto-review requested changes:
   requested_change: Keep the iteration blocked until approval.
 
 Fix the requested changes before proceeding. Keep scope limited to the current task, acceptance criteria, and touched files.`;
-    expect(prompts[0]).toBe(makePrompt(target, "", 1, expectedFeedback));
+    expect(prompts[0]).toBe(makeLoopPrompt(target, "", 1, expectedFeedback));
     expect(readSummary(target)).toContain("Attempts: 2/3");
     expect(autoReviewArtifacts(target)).toEqual(["iteration-1-auto-review-summary.txt"]);
     expectNoScopeArtifacts(target);
