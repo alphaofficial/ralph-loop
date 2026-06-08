@@ -1,5 +1,5 @@
 import { readProjectFile } from "./files";
-import { getIterationReviewScope } from "./iteration-git";
+import type { ReviewScope } from "./iteration-git";
 
 export type AutoReviewChange = {
   file: string;
@@ -108,11 +108,15 @@ export function isAutoReviewApproved(
   return result.status === "approved";
 }
 
-export function makeAutoReviewPrompt(target: string, loop: number): string {
+export function makeAutoReviewPrompt(
+  target: string,
+  loop: number,
+  reviewScope: ReviewScope | null
+): string {
   const prd = readProjectFile(target, "PRD.md");
   const tasks = readProjectFile(target, "TASKS.md");
   const status = readProjectFile(target, "STATUS.md");
-  const scope = readIterationReviewScope(target, loop);
+  const scope = reviewScope ?? { diff: "", touchedFiles: [] };
   const currentTask =
     completedTaskFromTasksDiff(scope.diff) ??
     firstUncheckedTask(tasks) ??
@@ -176,12 +180,13 @@ ${status}
 export function makeAutoReviewFixPrompt(
   target: string,
   loop: number,
+  reviewScope: ReviewScope | null,
   review: AutoReviewChangesRequested
 ): string {
   const prd = readProjectFile(target, "PRD.md");
   const tasks = readProjectFile(target, "TASKS.md");
   const status = readProjectFile(target, "STATUS.md");
-  const scope = readIterationReviewScope(target, loop);
+  const scope = reviewScope ?? { diff: "", touchedFiles: [] };
   const currentTask =
     completedTaskFromTasksDiff(scope.diff) ??
     firstUncheckedTask(tasks) ??
@@ -313,13 +318,6 @@ function extractJsonPayload(output: string): string | null {
   }
 
   return null;
-}
-
-function readIterationReviewScope(target: string, loop: number): {
-  diff: string;
-  touchedFiles: string[];
-} {
-  return getIterationReviewScope(target, loop);
 }
 
 function firstUncheckedTask(tasks: string): string | null {

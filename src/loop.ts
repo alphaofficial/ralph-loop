@@ -5,8 +5,6 @@ import { ensureTemplates, readProjectFile, updateRunnerBlock } from "./files";
 import {
   captureIterationGitBaseline,
   captureIterationReviewScope,
-  clearIterationReviewScope,
-  setIterationReviewScope,
 } from "./iteration-git";
 import {
   isAutoReviewApproved,
@@ -313,9 +311,8 @@ export async function runAutoReviewGate(
 
   for (let attempt = 1; attempt <= ctx.maxReviewLoops; attempt++) {
     const reviewScope = captureIterationReviewScopeFn(ctx.target, gitBaseline);
-    setIterationReviewScope(ctx.target, state.loop, reviewScope);
 
-    const reviewPrompt = makeAutoReviewPrompt(ctx.target, state.loop);
+    const reviewPrompt = makeAutoReviewPrompt(ctx.target, state.loop, reviewScope);
     const stopReview = startSpinnerFn(
       `🔎 auto-review · attempt ${attempt}/${ctx.maxReviewLoops}`
     );
@@ -381,7 +378,12 @@ Artifact: .ralph/iteration-${state.loop}-auto-review-${attempt}-result.json`;
     logFn(
       `auto-review requested ${reviewResult.changes.length} blocker${reviewResult.changes.length === 1 ? "" : "s"}`
     );
-    const fixPrompt = makeAutoReviewFixPrompt(ctx.target, state.loop, reviewResult);
+    const fixPrompt = makeAutoReviewFixPrompt(
+      ctx.target,
+      state.loop,
+      reviewScope,
+      reviewResult
+    );
     writeAutoReviewFixPromptArtifact(ctx.target, state.loop, attempt, fixPrompt);
 
     const stopFix = startSpinnerFn(
@@ -422,7 +424,6 @@ async function runIteration(ctx: LoopContext, state: LoopState): Promise<Iterati
   stopProvider();
 
   const autoReview = await runAutoReviewGate(ctx, state, gitBaseline);
-  clearIterationReviewScope(ctx.target, state.loop);
   if (!autoReview.approved) return { completed: false, retryable: false };
 
   const summaryFile = join(ctx.target, ".ralph", "check-summary.txt");

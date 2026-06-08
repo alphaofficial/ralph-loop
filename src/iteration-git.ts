@@ -21,8 +21,6 @@ export type ReviewScope = {
   touchedFiles: string[];
 };
 
-const reviewScopeStore = new Map<string, ReviewScope>();
-
 export function captureIterationGitBaseline(
   target: string,
   loop: number,
@@ -119,40 +117,6 @@ export function captureIterationReviewScope(
     diff,
     touchedFiles: touched,
   };
-}
-
-export function setIterationReviewScope(
-  target: string,
-  loop: number,
-  scope: ReviewScope | null
-) {
-  const key = reviewScopeKey(target, loop);
-  if (!scope) {
-    reviewScopeStore.delete(key);
-    return;
-  }
-
-  reviewScopeStore.set(key, {
-    diff: scope.diff,
-    touchedFiles: [...scope.touchedFiles],
-  });
-}
-
-export function getIterationReviewScope(
-  target: string,
-  loop: number
-): ReviewScope {
-  const scope = reviewScopeStore.get(reviewScopeKey(target, loop));
-  if (!scope) return { diff: "", touchedFiles: [] };
-
-  return {
-    diff: scope.diff,
-    touchedFiles: [...scope.touchedFiles],
-  };
-}
-
-export function clearIterationReviewScope(target: string, loop: number) {
-  reviewScopeStore.delete(reviewScopeKey(target, loop));
 }
 
 function snapshotFile(target: string, snapshotDir: string, relativePath: string) {
@@ -261,8 +225,4 @@ function gitOutputRaw(target: string, args: string[]): string | null {
   } catch {
     return null;
   }
-}
-
-function reviewScopeKey(target: string, loop: number): string {
-  return `${target}\0${loop}`;
 }
