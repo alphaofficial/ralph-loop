@@ -1,215 +1,25 @@
 import { join } from "node:path";
-import { writeFileSync, readFileSync, rmSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { log, err, startSpinner, formatDuration } from "./ui";
-import { ensureTemplates, readProjectFile, updateRunnerBlock } from "./files";
+import { ensureTemplates, updateRunnerBlock } from "./files";
 import {
-  captureIterationGitBaseline,
-  captureIterationReviewScope,
-} from "./iteration-git";
+  captureReviewScopeBaseline,
+  type ReviewScopeBaseline,
+} from "./review-scope";
+import { createMachine } from "./state-machine";
+import { invokeProvider, type Provider } from "./providers";
+import { makePrompt } from "./prompt";
 import {
-  isAutoReviewApproved,
-  makeAutoReviewPrompt,
-  parseAutoReviewResult,
-  type AutoReviewResult,
-} from "./auto-review";
-import { captureProvider, invokeProvider, type Provider } from "./providers";
+  SKIP,
+  allTasksComplete,
+  autoCommit,
+  isGitRepo,
+  readCheckOutputSummary,
+  runCheck,
+} from "./helpers";
+import { runAutoReviewGate } from "./auto-review-gate";
 
-export function makePrompt(
-  target: string,
-  checkCmd: string,
-  loopNo: number,
-  lastAttemptFeedback = "",
-  checkDisabled = false
-) {
-  const prd = readProjectFile(target, "PRD.md");
-  const tasks = readProjectFile(target, "TASKS.md");
-  const status = readProjectFile(target, "STATUS.md");
-
-  let content = `You are running one iteration of a Ralph loop inside this project.
-
-The project planning files are embedded below. Use these embedded copies instead of reading PRD.md, TASKS.md, or STATUS.md via tool calls.
-
-<PRD>
-${prd}
-</PRD>
-
-<TASKS>
-${tasks}
-</TASKS>
-
-<STATUS>
-${status}
-</STATUS>
-
-CRITICAL: You must complete exactly ONE unchecked task from TASKS.md, then stop.
-Do NOT attempt multiple tasks. Another fresh instance will handle the next task.
-
-Rules:
-- Pick the FIRST unchecked task (- [ ]) from TASKS.md.
-- Implement that single task only.
-- Check off that one task (- [x]) in TASKS.md.
-- Update STATUS.md with what you changed and what the next task should be.
-- Keep STATUS.md concrete, short, and truthful.
-- Record any implementation notes, spec gaps, decisions, tradeoffs, or notable deviations you had to make in STATUS.md.
-- Do not touch other unchecked tasks.
-- If you encounter any code or test issues, fix them and update STATUS.md with what you did to fix them.
-- Do not add tests which simply restate the implementation. These provide zero confidence. Avoid spurious tests. 
-- Do not leave known issues unfixed before checking off the task.
-
-Iteration number: ${loopNo}
-Verification command after your run: ${checkDisabled ? "<disabled by --no-check>" : checkCmd || "<none auto-detected>"}
-
-Write a one-line commit message describing what you changed to .ralph/commit-msg.txt.
-Ensure you follow the project's existing commit message style. Use git log to see project commit messsage format and follow it strictly.
-
-IMPORTANT: ensure the generated commit message is concise, specific and no more than 48 charaters.
-
-IMPORTANT: NEVER run git write commands (git add, git commit, git push, git stash, git reset, git checkout, git revert). Only git read commands are permitted (git log, git diff, git show, git status, git blame). The ralph runner handles all commits automatically.
-
-If you need to leave notes for the next fresh instance, put them in STATUS.md.
-
-IMPORTANT: Do not mark the task complete while any tests are failing. All tests must pass first, even if the failures look unrelated or pre-existing.
-`;
-
-  if (lastAttemptFeedback.trim()) {
-    content += `
-Your previous implementation attempt has blocking feedback:
-
-${lastAttemptFeedback.trimEnd()}
-
-Fix the issue before proceeding.
-`;
-  }
-
-  return content;
-}
-
-export const SKIP = Symbol("skip");
-
-function commandOutput(proc: { stdout?: Uint8Array; stderr?: Uint8Array }): string {
-  const decoder = new TextDecoder();
-  return [proc.stderr, proc.stdout]
-    .filter((output): output is Uint8Array => !!output && output.length > 0)
-    .map((output) => decoder.decode(output).trim())
-    .filter(Boolean)
-    .join("\n");
-}
-
-export async function runCheck(
-  target: string,
-  checkCmd: string,
-  outFile: string,
-  checkDisabled = false
-): Promise<number | typeof SKIP> {
-  if (!checkCmd) {
-    writeFileSync(
-      outFile,
-      checkDisabled
-        ? "Runner-managed verification disabled by --no-check.\n"
-        : "No verification command detected.\n"
-    );
-    return SKIP;
-  }
-
-  const proc = Bun.spawn(["bash", "-lc", checkCmd], {
-    cwd: target,
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-
-  const [stdout, stderr] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-  ]);
-
-  writeFileSync(outFile, stdout + stderr, { mode: 0o600 });
-  return await proc.exited;
-}
-
-export function allTasksComplete(target: string): boolean {
-  try {
-    const content = readFileSync(join(target, "TASKS.md"), "utf-8");
-    const tasks = content.split("\n").filter((line) => /^- \[[ x]\]/.test(line));
-    if (tasks.length === 0) return true;
-    return tasks.every((line) => line.startsWith("- [x]"));
-  } catch {
-    return true;
-  }
-}
-
-function isGitRepo(target: string): boolean {
-  const check = Bun.spawnSync(["git", "-C", target, "rev-parse", "--is-inside-work-tree"], {
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  return check.exitCode === 0;
-}
-
-export async function autoCommit(target: string, loop: number, canCommit = isGitRepo(target)) {
-  // Only commit if target is a git repo
-  const isGitRepo = canCommit;
-  if (!isGitRepo) return;
-
-  // Stage all changes
-  const add = Bun.spawnSync(["git", "-C", target, "add", "-A"], {
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  if (add.exitCode !== 0) {
-    const output = commandOutput(add);
-    err(`git add failed${output ? `: ${output}` : ""}`);
-    return;
-  }
-
-  // Check if there's anything to commit
-  const diff = Bun.spawnSync(["git", "-C", target, "diff", "--cached", "--quiet"], {
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  if (diff.exitCode === 0) return; // nothing staged
-  if (diff.exitCode !== 1) {
-    const output = commandOutput(diff);
-    err(`git diff --cached failed${output ? `: ${output}` : ""}`);
-    return;
-  }
-
-  // Use AI-generated commit message if available, fall back to task description
-  const msgFile = join(target, ".ralph", "commit-msg.txt");
-  let msg: string;
-  try {
-    msg = readFileSync(msgFile, "utf-8").trim().split("\n")[0];
-  } catch {
-    msg = "";
-  }
-  if (!msg) msg = `ralph: loop ${loop}`;
-
-  const proc = Bun.spawn(
-    ["git", "-C", target, "commit", "-m", msg],
-    { stdout: "pipe", stderr: "pipe" }
-  );
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
-  if (exitCode === 0) {
-    log(`✅ committed: ${msg}`);
-  } else {
-    const output = [stderr, stdout].map((text) => text.trim()).filter(Boolean).join("\n");
-    err(`git commit failed${output ? `: ${output}` : ""}`);
-  }
-}
-
-function first120Lines(file: string): string {
-  try {
-    const content = readFileSync(file, "utf-8");
-    return content.split("\n").slice(0, 120).join("\n");
-  } catch {
-    return "";
-  }
-}
-
-export type LoopContext = {
+type LoopRuntime = {
   provider: Provider;
   target: string;
   maxLoops: number;
@@ -220,293 +30,149 @@ export type LoopContext = {
   loopStart: number;
 };
 
-export type LoopState = {
+type LoopProgress = {
   loop: number;
   retries: number;
   lastFailedOutput: string;
 };
 
-type IterationResult =
-  | { completed: true }
-  | { completed: false; retryable: true; lastFailedOutput: string }
-  | { completed: false; retryable: false };
+const loopFlow = {
+  initialState: "run_provider",
+  states: {
+    run_provider: { provider_finished: "auto_review" },
+    auto_review: { review_approved: "verify", review_failed: "failed" },
+    verify: { verification_passed: "commit", verification_failed: "retry_task" },
+    commit: { commit_finished: "completed" },
+    completed: {},
+    retry_task: {},
+    failed: {},
+  },
+} as const;
 
-type AutoReviewGateResult = { approved: true } | { approved: false };
+async function runProviderAttempt(runtime: LoopRuntime, progress: LoopProgress): Promise<void> {
+  const total = formatDuration(Date.now() - runtime.loopStart);
+  log(`loop ${progress.loop} (${runtime.provider}) · total ${total}${progress.retries > 0 ? ` · retry ${progress.retries}/${runtime.maxLoops}` : ""}`);
 
-type AutoReviewGateDeps = {
-  captureProviderFn?: typeof captureProvider;
-  invokeProviderFn?: typeof invokeProvider;
-  captureIterationReviewScopeFn?: typeof captureIterationReviewScope;
-  logFn?: typeof log;
-  errFn?: typeof err;
-  startSpinnerFn?: typeof startSpinner;
-};
-
-function combineOutput(stdout: string, stderr: string): string {
-  return [stdout.trimEnd(), stderr.trimEnd()].filter(Boolean).join("\n");
-}
-
-function autoReviewArtifactBase(target: string, loop: number, attempt: number): string {
-  return join(target, ".ralph", `iteration-${loop}-auto-review-${attempt}`);
-}
-
-function writeAutoReviewOutputArtifact(
-  target: string,
-  loop: number,
-  attempt: number,
-  rawOutput: string
-): string {
-  const path = `${autoReviewArtifactBase(target, loop, attempt)}-output.txt`;
-  writeFileSync(path, rawOutput ? `${rawOutput}\n` : "", { mode: 0o600 });
-  return path;
-}
-
-function writeAutoReviewResultArtifact(
-  target: string,
-  loop: number,
-  attempt: number,
-  result: AutoReviewResult
-): string {
-  const path = `${autoReviewArtifactBase(target, loop, attempt)}-result.json`;
-  writeFileSync(path, JSON.stringify(result, null, 2) + "\n", { mode: 0o600 });
-  return path;
-}
-
-function writeAutoReviewSummary(
-  target: string,
-  loop: number,
-  summary: string,
-  updateStatus = false
-) {
-  writeFileSync(
-    join(target, ".ralph", `iteration-${loop}-auto-review-summary.txt`),
-    summary,
-    { mode: 0o600 }
-  );
-  if (updateStatus) updateRunnerBlock(join(target, "STATUS.md"), summary);
-}
-
-function cleanupAutoReviewArtifacts(paths: string[]) {
-  for (const path of paths) rmSync(path, { force: true });
-}
-
-function formatAutoReviewFeedback(result: Extract<AutoReviewResult, { status: "changes_requested" }>): string {
-  const changes = result.changes
-    .map(
-      (change) =>
-        `- file: ${change.file}\n  line: ${change.line}\n  requested_change: ${change.requested_change}`
-    )
-    .join("\n");
-
-  return `Auto-review blocked this attempt before verification.
-Treat this feedback as blocking context for the same task and fix it through the normal Ralph iteration prompt path.
-
-Auto-review requested changes:
-${changes}
-
-Fix the requested changes before proceeding. Keep scope limited to the current task, acceptance criteria, and touched files.`;
-}
-
-export async function runAutoReviewGate(
-  ctx: LoopContext,
-  state: LoopState,
-  gitBaseline: ReturnType<typeof captureIterationGitBaseline>,
-  deps: AutoReviewGateDeps = {}
-): Promise<AutoReviewGateResult> {
-  const captureProviderFn = deps.captureProviderFn ?? captureProvider;
-  const invokeProviderFn = deps.invokeProviderFn ?? invokeProvider;
-  const captureIterationReviewScopeFn =
-    deps.captureIterationReviewScopeFn ?? captureIterationReviewScope;
-  const logFn = deps.logFn ?? log;
-  const errFn = deps.errFn ?? err;
-  const startSpinnerFn = deps.startSpinnerFn ?? startSpinner;
-
-  if (!gitBaseline) {
-    logFn("auto-review skipped · git scope unavailable");
-    return { approved: true };
-  }
-
-  const debugArtifactPaths: string[] = [];
-
-  for (let attempt = 1; attempt <= ctx.maxReviewLoops; attempt++) {
-    const reviewScope = captureIterationReviewScopeFn(ctx.target, gitBaseline);
-
-    const reviewPrompt = makeAutoReviewPrompt(ctx.target, state.loop, reviewScope);
-    const stopReview = startSpinnerFn(
-      `🔎 auto-review · attempt ${attempt}/${ctx.maxReviewLoops}`
-    );
-    let reviewOutput = "";
-    let reviewResult: AutoReviewResult;
-    try {
-      const captured = await captureProviderFn(
-        ctx.provider,
-        ctx.target,
-        reviewPrompt,
-        process.env.RALPH_MODEL
-      );
-      reviewOutput = combineOutput(captured.stdout, captured.stderr);
-      reviewResult = parseAutoReviewResult(reviewOutput);
-      if (captured.code !== 0) {
-        errFn(`${ctx.provider} auto-review exited with code ${captured.code}`);
-      }
-    } catch (e) {
-      stopReview();
-      const summary = `Auto-review: FAIL
-Reason: failed to run reviewer: ${e instanceof Error ? e.message : e}`;
-      writeAutoReviewSummary(ctx.target, state.loop, summary, true);
-      errFn(summary);
-      return { approved: false };
-    }
-    stopReview();
-
-    if (isAutoReviewApproved(reviewResult)) {
-      cleanupAutoReviewArtifacts(debugArtifactPaths);
-      const summary = `Auto-review: PASS
-Attempts: ${attempt}/${ctx.maxReviewLoops}`;
-      writeAutoReviewSummary(ctx.target, state.loop, summary);
-      logFn(`✅ auto-review approved · attempt ${attempt}/${ctx.maxReviewLoops}`);
-      return { approved: true };
-    }
-
-    if (reviewResult.status === "invalid") {
-      const outputArtifact = writeAutoReviewOutputArtifact(
-        ctx.target,
-        state.loop,
-        attempt,
-        reviewOutput
-      );
-      debugArtifactPaths.push(outputArtifact);
-      debugArtifactPaths.push(
-        writeAutoReviewResultArtifact(ctx.target, state.loop, attempt, reviewResult)
-      );
-      const summary = `Auto-review: FAIL
-Reason: invalid reviewer output (${reviewResult.reason})
-Message: ${reviewResult.message}
-Artifact: .ralph/iteration-${state.loop}-auto-review-${attempt}-output.txt`;
-      writeAutoReviewSummary(ctx.target, state.loop, summary, true);
-      errFn(`auto-review blocked · invalid reviewer output (${reviewResult.reason})`);
-      return { approved: false };
-    }
-
-    if (attempt >= ctx.maxReviewLoops) {
-      debugArtifactPaths.push(
-        writeAutoReviewResultArtifact(ctx.target, state.loop, attempt, reviewResult)
-      );
-      const summary = `Auto-review: FAIL
-Reason: exhausted review loop after ${ctx.maxReviewLoops} attempts
-Artifact: .ralph/iteration-${state.loop}-auto-review-${attempt}-result.json`;
-      writeAutoReviewSummary(ctx.target, state.loop, summary, true);
-      errFn(`auto-review blocked · exhausted after ${ctx.maxReviewLoops} attempts`);
-      return { approved: false };
-    }
-
-    logFn(
-      `auto-review requested ${reviewResult.changes.length} blocker${reviewResult.changes.length === 1 ? "" : "s"}`
-    );
-    const retryPrompt = makePrompt(
-      ctx.target,
-      ctx.checkCmd,
-      state.loop,
-      formatAutoReviewFeedback(reviewResult),
-      ctx.checkDisabled
-    );
-
-    const stopFix = startSpinnerFn(
-      `🛠️ ${ctx.provider} is addressing auto-review blockers · pass ${attempt}/${ctx.maxReviewLoops - 1}`
-    );
-    try {
-      const providerCode = await invokeProviderFn(
-        ctx.provider,
-        ctx.target,
-        retryPrompt,
-        process.env.RALPH_MODEL
-      );
-      if (providerCode !== 0) errFn(`${ctx.provider} exited with code ${providerCode}`);
-    } catch (e) {
-      errFn(`failed to run ${ctx.provider}: ${e instanceof Error ? e.message : e}`);
-    }
-    stopFix();
-  }
-
-  return { approved: false };
-}
-
-async function runIteration(ctx: LoopContext, state: LoopState): Promise<IterationResult> {
-  const iterationStart = Date.now();
-  const total = formatDuration(Date.now() - ctx.loopStart);
-  log(`loop ${state.loop} (${ctx.provider}) · total ${total}${state.retries > 0 ? ` · retry ${state.retries}/${ctx.maxLoops}` : ""}`);
-
-  const prompt = makePrompt(ctx.target, ctx.checkCmd, state.loop, state.lastFailedOutput, ctx.checkDisabled);
-  const gitBaseline = captureIterationGitBaseline(ctx.target, state.loop, ctx.canAutoCommit);
-
-  const stopProvider = startSpinner(`🌀 ${ctx.provider} is working · loop ${state.loop}`);
+  const prompt = makePrompt(runtime.target, runtime.checkCmd, progress.loop, progress.lastFailedOutput, runtime.checkDisabled);
+  const stopProvider = startSpinner(`🌀 ${runtime.provider} is working · loop ${progress.loop}`);
   try {
-    const providerCode = await invokeProvider(ctx.provider, ctx.target, prompt, process.env.RALPH_MODEL);
-    if (providerCode !== 0) err(`${ctx.provider} exited with code ${providerCode}`);
+    const providerCode = await invokeProvider(runtime.provider, runtime.target, prompt, process.env.RALPH_MODEL);
+    if (providerCode !== 0) err(`${runtime.provider} exited with code ${providerCode}`);
   } catch (e) {
-    err(`failed to run ${ctx.provider}: ${e instanceof Error ? e.message : e}`);
+    err(`failed to run ${runtime.provider}: ${e instanceof Error ? e.message : e}`);
   }
   stopProvider();
+}
 
-  const autoReview = await runAutoReviewGate(ctx, state, gitBaseline);
-  if (!autoReview.approved) return { completed: false, retryable: false };
-
-  const summaryFile = join(ctx.target, ".ralph", "check-summary.txt");
-  const checkOut = join(ctx.target, ".ralph", "check-output.txt");
+async function runVerification(
+  runtime: LoopRuntime,
+  iterationStart: number
+) {
+  const summaryFile = join(runtime.target, ".ralph", "check-summary.txt");
+  const checkOut = join(runtime.target, ".ralph", "check-output.txt");
 
   const stopCheck = startSpinner(
-    ctx.checkDisabled ? "verification disabled by --no-check" : `verifying · ${ctx.checkCmd || "no check cmd"}`
+    runtime.checkDisabled ? "verification disabled by --no-check" : `verifying · ${runtime.checkCmd || "no check cmd"}`
   );
-  const code = await runCheck(ctx.target, ctx.checkCmd, checkOut, ctx.checkDisabled);
+  const code = await runCheck(runtime.target, runtime.checkCmd, checkOut, runtime.checkDisabled);
   stopCheck();
 
-  const output = first120Lines(checkOut);
+  const output = readCheckOutputSummary(checkOut);
   const iterTime = formatDuration(Date.now() - iterationStart);
   let summary: string;
   if (code === SKIP) {
     summary = "Verification: SKIPPED\n" + output;
-    log(`${ctx.checkDisabled ? "verification disabled by --no-check" : "no check command"} · ${iterTime}`);
+    log(`${runtime.checkDisabled ? "verification disabled by --no-check" : "no check command"} · ${iterTime}`);
   } else if (code === 0) {
     summary = "Verification: PASS\n";
-    if (ctx.checkCmd) summary += `Command: ${ctx.checkCmd}\n\n`;
+    if (runtime.checkCmd) summary += `Command: ${runtime.checkCmd}\n\n`;
     summary += output;
     log(`✅ checks passed · ${iterTime}`);
   } else {
     summary = "Verification: FAIL\n";
-    if (ctx.checkCmd) summary += `Command: ${ctx.checkCmd}\n\n`;
+    if (runtime.checkCmd) summary += `Command: ${runtime.checkCmd}\n\n`;
     summary += output;
     log(`⚠️ checks failed · ${iterTime}`);
   }
 
   writeFileSync(summaryFile, summary, { mode: 0o600 });
-  updateRunnerBlock(join(ctx.target, "STATUS.md"), summary);
+  updateRunnerBlock(join(runtime.target, "STATUS.md"), summary);
 
   if (code === 0 || code === SKIP) {
-    await autoCommit(ctx.target, state.loop, ctx.canAutoCommit);
-    return { completed: true };
+    return { event: "verification_passed" } as const;
   }
   return {
-    completed: false,
-    retryable: true,
-    lastFailedOutput: readFileSync(checkOut, "utf-8"),
-  };
+    event: "verification_failed",
+    retryFeedback: readFileSync(checkOut, "utf-8"),
+  } as const;
 }
 
-async function drainTasks(ctx: LoopContext, state: LoopState): Promise<number> {
-  while (!allTasksComplete(ctx.target)) {
-    state.loop++;
-    const result = await runIteration(ctx, state);
-    if (result.completed) {
-      state.retries = 0;
-      state.lastFailedOutput = "";
+async function runIteration(runtime: LoopRuntime, progress: LoopProgress) {
+  const iterationStart = Date.now();
+  const machine = createMachine(loopFlow);
+  let reviewScopeBaseline: ReviewScopeBaseline | null = null;
+  let retryFeedback = "";
+
+  while (true) {
+    switch (machine.value) {
+      case "run_provider": {
+        reviewScopeBaseline = captureReviewScopeBaseline(
+          runtime.target,
+          progress.loop,
+          runtime.canAutoCommit
+        );
+        await runProviderAttempt(runtime, progress);
+        machine.transition("provider_finished");
+        break;
+      }
+
+      case "auto_review": {
+        const event = await runAutoReviewGate(runtime, progress, reviewScopeBaseline);
+        machine.transition(event);
+        break;
+      }
+
+      case "verify": {
+        const result = await runVerification(runtime, iterationStart);
+        if (result.event === "verification_failed") {
+          retryFeedback = result.retryFeedback;
+        }
+        machine.transition(result.event);
+        break;
+      }
+
+      case "commit":
+        await autoCommit(runtime.target, progress.loop, runtime.canAutoCommit);
+        machine.transition("commit_finished");
+        break;
+
+      case "completed":
+        return { state: "completed" } as const;
+
+      case "retry_task":
+        return { state: "retry_task", retryFeedback } as const;
+
+      case "failed":
+        return { state: "failed" } as const;
+    }
+  }
+}
+
+async function drainTasks(runtime: LoopRuntime, progress: LoopProgress): Promise<number> {
+  while (!allTasksComplete(runtime.target)) {
+    progress.loop++;
+    const result = await runIteration(runtime, progress);
+    if (result.state === "completed") {
+      progress.retries = 0;
+      progress.lastFailedOutput = "";
       continue;
     }
-    if (!result.retryable) return 1;
-    state.lastFailedOutput = result.lastFailedOutput;
-    state.retries++;
-    if (state.retries >= ctx.maxLoops) {
-      const total = formatDuration(Date.now() - ctx.loopStart);
-      err(`⚠️ ${state.retries} consecutive failures on the same task — giving up after ${total}`);
+    if (result.state === "failed") return 1;
+    progress.lastFailedOutput = result.retryFeedback;
+    progress.retries++;
+    if (progress.retries >= runtime.maxLoops) {
+      const total = formatDuration(Date.now() - runtime.loopStart);
+      err(`⚠️ ${progress.retries} consecutive failures on the same task — giving up after ${total}`);
       return 1;
     }
   }
@@ -530,7 +196,7 @@ export async function mainLoop(
     return 0;
   }
 
-  const ctx: LoopContext = {
+  const runtime: LoopRuntime = {
     provider,
     target,
     maxLoops,
@@ -540,12 +206,12 @@ export async function mainLoop(
     canAutoCommit: isGitRepo(target),
     loopStart: Date.now(),
   };
-  const state: LoopState = { loop: 0, retries: 0, lastFailedOutput: "" };
+  const progress: LoopProgress = { loop: 0, retries: 0, lastFailedOutput: "" };
 
-  const initialCode = await drainTasks(ctx, state);
+  const initialCode = await drainTasks(runtime, progress);
   if (initialCode !== 0) return initialCode;
 
-  const total = formatDuration(Date.now() - ctx.loopStart);
-  log(`all tasks complete in ${state.loop} loops (${total})`);
+  const total = formatDuration(Date.now() - runtime.loopStart);
+  log(`all tasks complete in ${progress.loop} loops (${total})`);
   return 0;
 }

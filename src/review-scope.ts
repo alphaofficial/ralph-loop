@@ -8,7 +8,7 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 
-type IterationGitBaseline = {
+export type ReviewScopeBaseline = {
   head: string | null;
   compareTrackedBySnapshot: boolean;
   snapshotDir: string;
@@ -21,11 +21,11 @@ export type ReviewScope = {
   touchedFiles: string[];
 };
 
-export function captureIterationGitBaseline(
+export function captureReviewScopeBaseline(
   target: string,
   loop: number,
   enabled: boolean
-): IterationGitBaseline | null {
+): ReviewScopeBaseline | null {
   if (!enabled) return null;
 
   const head = gitOutput(target, ["rev-parse", "--verify", "HEAD"]);
@@ -56,9 +56,9 @@ export function captureIterationGitBaseline(
   };
 }
 
-export function captureIterationReviewScope(
+export function captureReviewScope(
   target: string,
-  baseline: IterationGitBaseline | null
+  baseline: ReviewScopeBaseline | null
 ): ReviewScope | null {
   if (!baseline) return null;
 
