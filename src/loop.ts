@@ -207,7 +207,7 @@ function first120Lines(file: string): string {
   }
 }
 
-type LoopContext = {
+export type LoopContext = {
   provider: Provider;
   target: string;
   maxLoops: number;
@@ -218,7 +218,7 @@ type LoopContext = {
   loopStart: number;
 };
 
-type LoopState = {
+export type LoopState = {
   loop: number;
   retries: number;
   lastFailedOutput: string;
@@ -230,6 +230,15 @@ type IterationResult =
   | { completed: false; retryable: false };
 
 type AutoReviewGateResult = { approved: true } | { approved: false };
+
+type AutoReviewGateDeps = {
+  captureProviderFn?: typeof captureProvider;
+  invokeProviderFn?: typeof invokeProvider;
+  writeIterationGitArtifactsFn?: typeof writeIterationGitArtifacts;
+  logFn?: typeof log;
+  errFn?: typeof err;
+  startSpinnerFn?: typeof startSpinner;
+};
 
 function combineOutput(stdout: string, stderr: string): string {
   return [stdout.trimEnd(), stderr.trimEnd()].filter(Boolean).join("\n");
@@ -278,25 +287,36 @@ function writeAutoReviewSummary(
   if (updateStatus) updateRunnerBlock(join(target, "STATUS.md"), summary);
 }
 
-async function runAutoReviewGate(
+export async function runAutoReviewGate(
   ctx: LoopContext,
   state: LoopState,
-  gitBaseline: ReturnType<typeof captureIterationGitBaseline>
+  gitBaseline: ReturnType<typeof captureIterationGitBaseline>,
+  deps: AutoReviewGateDeps = {}
 ): Promise<AutoReviewGateResult> {
+  const captureProviderFn = deps.captureProviderFn ?? captureProvider;
+  const invokeProviderFn = deps.invokeProviderFn ?? invokeProvider;
+  const writeIterationGitArtifactsFn =
+    deps.writeIterationGitArtifactsFn ?? writeIterationGitArtifacts;
+  const logFn = deps.logFn ?? log;
+  const errFn = deps.errFn ?? err;
+  const startSpinnerFn = deps.startSpinnerFn ?? startSpinner;
+
   if (!gitBaseline) {
-    log("auto-review skipped · git scope unavailable");
+    logFn("auto-review skipped · git scope unavailable");
     return { approved: true };
   }
 
   for (let attempt = 1; attempt <= ctx.maxReviewLoops; attempt++) {
-    writeIterationGitArtifacts(ctx.target, state.loop, gitBaseline);
+    writeIterationGitArtifactsFn(ctx.target, state.loop, gitBaseline);
 
     const reviewPrompt = makeAutoReviewPrompt(ctx.target, state.loop);
-    const stopReview = startSpinner(`🔎 auto-review · attempt ${attempt}/${ctx.maxReviewLoops}`);
+    const stopReview = startSpinnerFn(
+      `🔎 auto-review · attempt ${attempt}/${ctx.maxReviewLoops}`
+    );
     let reviewOutput = "";
     let reviewResult: AutoReviewResult;
     try {
-      const captured = await captureProvider(
+      const captured = await captureProviderFn(
         ctx.provider,
         ctx.target,
         reviewPrompt,
@@ -312,13 +332,15 @@ async function runAutoReviewGate(
         reviewOutput,
         reviewResult
       );
-      if (captured.code !== 0) err(`${ctx.provider} auto-review exited with code ${captured.code}`);
+      if (captured.code !== 0) {
+        errFn(`${ctx.provider} auto-review exited with code ${captured.code}`);
+      }
     } catch (e) {
       stopReview();
       const summary = `Auto-review: FAIL
 Reason: failed to run reviewer: ${e instanceof Error ? e.message : e}`;
       writeAutoReviewSummary(ctx.target, state.loop, summary, true);
-      err(summary);
+      errFn(summary);
       return { approved: false };
     }
     stopReview();
@@ -327,7 +349,7 @@ Reason: failed to run reviewer: ${e instanceof Error ? e.message : e}`;
       const summary = `Auto-review: PASS
 Attempts: ${attempt}/${ctx.maxReviewLoops}`;
       writeAutoReviewSummary(ctx.target, state.loop, summary);
-      log(`✅ auto-review approved · attempt ${attempt}/${ctx.maxReviewLoops}`);
+      logFn(`✅ auto-review approved · attempt ${attempt}/${ctx.maxReviewLoops}`);
       return { approved: true };
     }
 
@@ -337,7 +359,7 @@ Reason: invalid reviewer output (${reviewResult.reason})
 Message: ${reviewResult.message}
 Artifact: .ralph/iteration-${state.loop}-auto-review-${attempt}-output.txt`;
       writeAutoReviewSummary(ctx.target, state.loop, summary, true);
-      err(`auto-review blocked · invalid reviewer output (${reviewResult.reason})`);
+      errFn(`auto-review blocked · invalid reviewer output (${reviewResult.reason})`);
       return { approved: false };
     }
 
@@ -346,29 +368,29 @@ Artifact: .ralph/iteration-${state.loop}-auto-review-${attempt}-output.txt`;
 Reason: exhausted review loop after ${ctx.maxReviewLoops} attempts
 Artifact: .ralph/iteration-${state.loop}-auto-review-${attempt}-result.json`;
       writeAutoReviewSummary(ctx.target, state.loop, summary, true);
-      err(`auto-review blocked · exhausted after ${ctx.maxReviewLoops} attempts`);
+      errFn(`auto-review blocked · exhausted after ${ctx.maxReviewLoops} attempts`);
       return { approved: false };
     }
 
-    log(
+    logFn(
       `auto-review requested ${reviewResult.changes.length} blocker${reviewResult.changes.length === 1 ? "" : "s"}`
     );
     const fixPrompt = makeAutoReviewFixPrompt(ctx.target, state.loop, reviewResult);
     writeAutoReviewFixPromptArtifact(ctx.target, state.loop, attempt, fixPrompt);
 
-    const stopFix = startSpinner(
+    const stopFix = startSpinnerFn(
       `🛠️ ${ctx.provider} is addressing auto-review blockers · pass ${attempt}/${ctx.maxReviewLoops - 1}`
     );
     try {
-      const providerCode = await invokeProvider(
+      const providerCode = await invokeProviderFn(
         ctx.provider,
         ctx.target,
         fixPrompt,
         process.env.RALPH_MODEL
       );
-      if (providerCode !== 0) err(`${ctx.provider} exited with code ${providerCode}`);
+      if (providerCode !== 0) errFn(`${ctx.provider} exited with code ${providerCode}`);
     } catch (e) {
-      err(`failed to run ${ctx.provider}: ${e instanceof Error ? e.message : e}`);
+      errFn(`failed to run ${ctx.provider}: ${e instanceof Error ? e.message : e}`);
     }
     stopFix();
   }
