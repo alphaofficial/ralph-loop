@@ -1,5 +1,13 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { captureIterationGitBaseline } from "./iteration-git";
@@ -83,6 +91,18 @@ function readSummary(target: string, loop = 1): string {
   );
 }
 
+function autoReviewArtifacts(target: string): string[] {
+  return readdirSync(join(target, ".ralph"))
+    .filter((name) => name.includes("auto-review"))
+    .sort();
+}
+
+function expectNoScopeArtifacts(target: string, loop = 1) {
+  expect(existsSync(join(target, ".ralph", `iteration-${loop}-touched-files.txt`))).toBe(false);
+  expect(existsSync(join(target, ".ralph", `iteration-${loop}-diff.patch`))).toBe(false);
+  expect(existsSync(join(target, ".ralph", `iteration-${loop}-git.json`))).toBe(false);
+}
+
 function requestedChange(file = "src/feature.ts"): AutoReviewChangesRequested {
   return {
     status: "changes_requested",
@@ -120,6 +140,8 @@ describe("runAutoReviewGate", () => {
     expect(reviewCalls).toBe(1);
     expect(fixCalls).toBe(0);
     expect(readSummary(target)).toContain("Auto-review: PASS");
+    expect(autoReviewArtifacts(target)).toEqual(["iteration-1-auto-review-summary.txt"]);
+    expectNoScopeArtifacts(target);
   });
 
   test("requests focused fixes and re-reviews before approving", async () => {
@@ -156,6 +178,8 @@ describe("runAutoReviewGate", () => {
     expect(prompts[0]).toContain("Blocking changes requested by auto-review");
     expect(prompts[0]).toContain("Keep the iteration blocked until approval.");
     expect(readSummary(target)).toContain("Attempts: 2/3");
+    expect(autoReviewArtifacts(target)).toEqual(["iteration-1-auto-review-summary.txt"]);
+    expectNoScopeArtifacts(target);
   });
 
   test("fails closed on invalid reviewer output", async () => {
@@ -181,6 +205,12 @@ describe("runAutoReviewGate", () => {
     expect(fixCalls).toBe(0);
     expect(readSummary(target)).toContain("invalid reviewer output (missing_json)");
     expect(readFileSync(join(target, "STATUS.md"), "utf-8")).toContain("Auto-review: FAIL");
+    expect(autoReviewArtifacts(target)).toEqual([
+      "iteration-1-auto-review-1-output.txt",
+      "iteration-1-auto-review-1-result.json",
+      "iteration-1-auto-review-summary.txt",
+    ]);
+    expectNoScopeArtifacts(target);
   });
 
   test("stops after the review loop bound is exhausted", async () => {
@@ -213,5 +243,11 @@ describe("runAutoReviewGate", () => {
     expect(
       readFileSync(join(target, ".ralph", "iteration-1-auto-review-2-result.json"), "utf-8")
     ).toContain(`"status": "changes_requested"`);
+    expect(autoReviewArtifacts(target)).toEqual([
+      "iteration-1-auto-review-2-result.json",
+      "iteration-1-auto-review-fix-1.prompt.txt",
+      "iteration-1-auto-review-summary.txt",
+    ]);
+    expectNoScopeArtifacts(target);
   });
 });
