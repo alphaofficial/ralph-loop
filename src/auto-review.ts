@@ -1,6 +1,5 @@
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import { readProjectFile } from "./files";
+import { getIterationReviewScope } from "./iteration-git";
 
 export type AutoReviewChange = {
   file: string;
@@ -151,17 +150,12 @@ Completed iteration task:
 Relevant PRD acceptance criteria:
 ${extractRelevantAcceptanceCriteria(prd)}
 
-Iteration review artifacts:
-- touched files artifact: .ralph/iteration-${loop}-touched-files.txt
-- diff artifact: .ralph/iteration-${loop}-diff.patch
-- metadata artifact: .ralph/iteration-${loop}-git.json
-
 Touched files:
 ${formatTouchedFiles(scope.touchedFiles)}
 
 Iteration diff:
 \`\`\`diff
-${scope.diff || "# No iteration diff artifact was recorded."}
+${scope.diff || "# No iteration diff was captured."}
 \`\`\`
 
 Project planning files are embedded below. Use these embedded copies instead of reading PRD.md, TASKS.md, or STATUS.md via tool calls.
@@ -219,7 +213,7 @@ ${formatTouchedFiles(scope.touchedFiles)}
 
 Iteration diff so far:
 \`\`\`diff
-${scope.diff || "# No iteration diff artifact was recorded."}
+${scope.diff || "# No iteration diff was captured."}
 \`\`\`
 
 Project planning files are embedded below. Use these embedded copies instead of reading PRD.md, TASKS.md, or STATUS.md via tool calls.
@@ -325,19 +319,7 @@ function readIterationReviewScope(target: string, loop: number): {
   diff: string;
   touchedFiles: string[];
 } {
-  const ralphDir = join(target, ".ralph");
-  const touchedFilesPath = join(ralphDir, `iteration-${loop}-touched-files.txt`);
-  const diffPath = join(ralphDir, `iteration-${loop}-diff.patch`);
-
-  const touchedFiles = existsSync(touchedFilesPath)
-    ? readFileSync(touchedFilesPath, "utf-8")
-        .split("\n")
-        .map((line) => line.trim())
-        .filter(Boolean)
-    : [];
-  const diff = existsSync(diffPath) ? readFileSync(diffPath, "utf-8").trimEnd() : "";
-
-  return { diff, touchedFiles };
+  return getIterationReviewScope(target, loop);
 }
 
 function firstUncheckedTask(tasks: string): string | null {

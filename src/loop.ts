@@ -2,7 +2,12 @@ import { join } from "node:path";
 import { writeFileSync, readFileSync } from "node:fs";
 import { log, err, startSpinner, formatDuration } from "./ui";
 import { ensureTemplates, readProjectFile, updateRunnerBlock } from "./files";
-import { captureIterationGitBaseline, writeIterationGitArtifacts } from "./iteration-git";
+import {
+  captureIterationGitBaseline,
+  captureIterationReviewScope,
+  clearIterationReviewScope,
+  setIterationReviewScope,
+} from "./iteration-git";
 import {
   isAutoReviewApproved,
   makeAutoReviewFixPrompt,
@@ -234,7 +239,7 @@ type AutoReviewGateResult = { approved: true } | { approved: false };
 type AutoReviewGateDeps = {
   captureProviderFn?: typeof captureProvider;
   invokeProviderFn?: typeof invokeProvider;
-  writeIterationGitArtifactsFn?: typeof writeIterationGitArtifacts;
+  captureIterationReviewScopeFn?: typeof captureIterationReviewScope;
   logFn?: typeof log;
   errFn?: typeof err;
   startSpinnerFn?: typeof startSpinner;
@@ -295,8 +300,8 @@ export async function runAutoReviewGate(
 ): Promise<AutoReviewGateResult> {
   const captureProviderFn = deps.captureProviderFn ?? captureProvider;
   const invokeProviderFn = deps.invokeProviderFn ?? invokeProvider;
-  const writeIterationGitArtifactsFn =
-    deps.writeIterationGitArtifactsFn ?? writeIterationGitArtifacts;
+  const captureIterationReviewScopeFn =
+    deps.captureIterationReviewScopeFn ?? captureIterationReviewScope;
   const logFn = deps.logFn ?? log;
   const errFn = deps.errFn ?? err;
   const startSpinnerFn = deps.startSpinnerFn ?? startSpinner;
@@ -307,7 +312,8 @@ export async function runAutoReviewGate(
   }
 
   for (let attempt = 1; attempt <= ctx.maxReviewLoops; attempt++) {
-    writeIterationGitArtifactsFn(ctx.target, state.loop, gitBaseline);
+    const reviewScope = captureIterationReviewScopeFn(ctx.target, gitBaseline);
+    setIterationReviewScope(ctx.target, state.loop, reviewScope);
 
     const reviewPrompt = makeAutoReviewPrompt(ctx.target, state.loop);
     const stopReview = startSpinnerFn(
@@ -414,9 +420,9 @@ async function runIteration(ctx: LoopContext, state: LoopState): Promise<Iterati
     err(`failed to run ${ctx.provider}: ${e instanceof Error ? e.message : e}`);
   }
   stopProvider();
-  writeIterationGitArtifacts(ctx.target, state.loop, gitBaseline);
 
   const autoReview = await runAutoReviewGate(ctx, state, gitBaseline);
+  clearIterationReviewScope(ctx.target, state.loop);
   if (!autoReview.approved) return { completed: false, retryable: false };
 
   const summaryFile = join(ctx.target, ".ralph", "check-summary.txt");

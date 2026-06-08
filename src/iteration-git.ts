@@ -5,9 +5,8 @@ import {
   mkdirSync,
   readFileSync,
   rmSync,
-  writeFileSync,
 } from "node:fs";
-import { dirname, join, relative } from "node:path";
+import { dirname, join } from "node:path";
 
 type IterationGitBaseline = {
   head: string | null;
@@ -17,13 +16,12 @@ type IterationGitBaseline = {
   untrackedBefore: Set<string>;
 };
 
-export type IterationGitArtifacts = {
+export type ReviewScope = {
   diff: string;
-  diffPath: string;
-  metadataPath: string;
   touchedFiles: string[];
-  touchedFilesPath: string;
 };
+
+const reviewScopeStore = new Map<string, ReviewScope>();
 
 export function captureIterationGitBaseline(
   target: string,
@@ -60,11 +58,10 @@ export function captureIterationGitBaseline(
   };
 }
 
-export function writeIterationGitArtifacts(
+export function captureIterationReviewScope(
   target: string,
-  loop: number,
   baseline: IterationGitBaseline | null
-): IterationGitArtifacts | null {
+): ReviewScope | null {
   if (!baseline) return null;
 
   const trackedAfter = new Set(
@@ -117,37 +114,45 @@ export function writeIterationGitArtifacts(
 
   const touched = [...touchedFiles].sort();
   const diff = diffParts.join(diffParts.length > 0 ? "\n" : "");
-  const touchedFilesPath = join(target, ".ralph", `iteration-${loop}-touched-files.txt`);
-  const diffPath = join(target, ".ralph", `iteration-${loop}-diff.patch`);
-  const metadataPath = join(target, ".ralph", `iteration-${loop}-git.json`);
-
-  writeFileSync(touchedFilesPath, touched.join("\n") + (touched.length > 0 ? "\n" : ""), {
-    mode: 0o600,
-  });
-  writeFileSync(diffPath, diff, { mode: 0o600 });
-  writeFileSync(
-    metadataPath,
-    JSON.stringify(
-      {
-        loop,
-        head: baseline.head,
-        touched_files: touched,
-        touched_files_path: relative(target, touchedFilesPath),
-        diff_path: relative(target, diffPath),
-      },
-      null,
-      2
-    ) + "\n",
-    { mode: 0o600 }
-  );
 
   return {
     diff,
-    diffPath,
-    metadataPath,
     touchedFiles: touched,
-    touchedFilesPath,
   };
+}
+
+export function setIterationReviewScope(
+  target: string,
+  loop: number,
+  scope: ReviewScope | null
+) {
+  const key = reviewScopeKey(target, loop);
+  if (!scope) {
+    reviewScopeStore.delete(key);
+    return;
+  }
+
+  reviewScopeStore.set(key, {
+    diff: scope.diff,
+    touchedFiles: [...scope.touchedFiles],
+  });
+}
+
+export function getIterationReviewScope(
+  target: string,
+  loop: number
+): ReviewScope {
+  const scope = reviewScopeStore.get(reviewScopeKey(target, loop));
+  if (!scope) return { diff: "", touchedFiles: [] };
+
+  return {
+    diff: scope.diff,
+    touchedFiles: [...scope.touchedFiles],
+  };
+}
+
+export function clearIterationReviewScope(target: string, loop: number) {
+  reviewScopeStore.delete(reviewScopeKey(target, loop));
 }
 
 function snapshotFile(target: string, snapshotDir: string, relativePath: string) {
@@ -256,4 +261,8 @@ function gitOutputRaw(target: string, args: string[]): string | null {
   } catch {
     return null;
   }
+}
+
+function reviewScopeKey(target: string, loop: number): string {
+  return `${target}\0${loop}`;
 }
