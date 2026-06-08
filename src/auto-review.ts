@@ -177,65 +177,6 @@ ${status}
 </STATUS>`;
 }
 
-export function makeAutoReviewFixPrompt(
-  target: string,
-  loop: number,
-  reviewScope: ReviewScope | null,
-  review: AutoReviewChangesRequested
-): string {
-  const prd = readProjectFile(target, "PRD.md");
-  const tasks = readProjectFile(target, "TASKS.md");
-  const status = readProjectFile(target, "STATUS.md");
-  const scope = reviewScope ?? { diff: "", touchedFiles: [] };
-  const currentTask =
-    completedTaskFromTasksDiff(scope.diff) ??
-    firstUncheckedTask(tasks) ??
-    "Unable to determine the current iteration task.";
-
-  return `You are continuing Ralph iteration ${loop} after the blocking auto-review gate requested changes.
-
-Your job is to fix only the requested blockers below, then stop. Do not run verification or any git write commands.
-
-Fix rules:
-- Scope is limited to the requested blockers below, the completed task, the relevant PRD acceptance criteria, and the files already touched in this iteration.
-- Focus on the minimal blocking fixes needed for approval. Do not start the next TASKS.md item.
-- Do not introduce unrelated refactors, cleanup, or scope expansion.
-- If the minimal blocker fix requires touching an additional file, keep that edit directly in service of one requested change.
-- Preserve the completed current task checkbox in TASKS.md. Do not change any other task status.
-- Keep STATUS.md concrete and truthful if the blocker fix changes what the next iteration should know.
-
-Blocking changes requested by auto-review:
-${formatRequestedChanges(review.changes)}
-
-Completed iteration task:
-- ${currentTask}
-
-Relevant PRD acceptance criteria:
-${extractRelevantAcceptanceCriteria(prd)}
-
-Touched files so far:
-${formatTouchedFiles(scope.touchedFiles)}
-
-Iteration diff so far:
-\`\`\`diff
-${scope.diff || "# No iteration diff was captured."}
-\`\`\`
-
-Project planning files are embedded below. Use these embedded copies instead of reading PRD.md, TASKS.md, or STATUS.md via tool calls.
-
-<PRD>
-${prd}
-</PRD>
-
-<TASKS>
-${tasks}
-</TASKS>
-
-<STATUS>
-${status}
-</STATUS>`;
-}
-
 function parseChange(entry: unknown): AutoReviewChange | null {
   if (!entry || typeof entry !== "object" || Array.isArray(entry)) return null;
   const record = entry as Record<string, unknown>;
@@ -417,15 +358,6 @@ function sectionBullets(markdown: string, heading: string): string[] {
 function formatTouchedFiles(touchedFiles: string[]): string {
   if (touchedFiles.length === 0) return "- (none recorded)";
   return touchedFiles.map((file) => `- ${file}`).join("\n");
-}
-
-function formatRequestedChanges(changes: AutoReviewChange[]): string {
-  return changes
-    .map(
-      (change) =>
-        `- ${change.file}:${change.line} — ${change.requested_change}`
-    )
-    .join("\n");
 }
 
 function escapeRegex(value: string): string {

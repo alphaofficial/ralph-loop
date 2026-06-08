@@ -175,7 +175,10 @@ describe("runAutoReviewGate", () => {
     expect(result).toEqual({ approved: true });
     expect(reviewCalls).toBe(2);
     expect(fixCalls).toBe(1);
-    expect(prompts[0]).toContain("Blocking changes requested by auto-review");
+    expect(prompts[0]).toContain("You are running one iteration of a Ralph loop");
+    expect(prompts[0]).toContain("blocked by auto-review before verification");
+    expect(prompts[0]).toContain("file: src/feature.ts");
+    expect(prompts[0]).toContain("line: 1");
     expect(prompts[0]).toContain("Keep the iteration blocked until approval.");
     expect(readSummary(target)).toContain("Attempts: 2/3");
     expect(autoReviewArtifacts(target)).toEqual(["iteration-1-auto-review-summary.txt"]);
@@ -245,7 +248,6 @@ describe("runAutoReviewGate", () => {
     ).toContain(`"status": "changes_requested"`);
     expect(autoReviewArtifacts(target)).toEqual([
       "iteration-1-auto-review-2-result.json",
-      "iteration-1-auto-review-fix-1.prompt.txt",
       "iteration-1-auto-review-summary.txt",
     ]);
     expectNoScopeArtifacts(target);
