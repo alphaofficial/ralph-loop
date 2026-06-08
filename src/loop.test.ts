@@ -11,7 +11,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { captureIterationGitBaseline } from "./iteration-git";
-import { runAutoReviewGate, type LoopContext, type LoopState } from "./loop";
+import { makePrompt, runAutoReviewGate, type LoopContext, type LoopState } from "./loop";
 import type { AutoReviewChangesRequested } from "./auto-review";
 
 const TASKS_TEXT = `- [x] Define auto-review result parsing/validation and failure behavior.
@@ -144,7 +144,7 @@ describe("runAutoReviewGate", () => {
     expectNoScopeArtifacts(target);
   });
 
-  test("requests focused fixes and re-reviews before approving", async () => {
+  test("requests changes through the main iteration prompt path before re-reviewing", async () => {
     const { target, baseline } = createAutoReviewProject();
     const prompts: string[] = [];
     let reviewCalls = 0;
@@ -175,13 +175,16 @@ describe("runAutoReviewGate", () => {
     expect(result).toEqual({ approved: true });
     expect(reviewCalls).toBe(2);
     expect(fixCalls).toBe(1);
-    expect(prompts[0]).toContain("You are running one iteration of a Ralph loop");
-    expect(prompts[0]).toContain("Your previous implementation attempt has blocking feedback");
-    expect(prompts[0]).toContain("Auto-review blocked this attempt before verification");
-    expect(prompts[0]).toContain("normal Ralph iteration prompt path");
-    expect(prompts[0]).toContain("file: src/feature.ts");
-    expect(prompts[0]).toContain("line: 1");
-    expect(prompts[0]).toContain("Keep the iteration blocked until approval.");
+    const expectedFeedback = `Auto-review blocked this attempt before verification.
+Treat this feedback as blocking context for the same task and fix it through the normal Ralph iteration prompt path.
+
+Auto-review requested changes:
+- file: src/feature.ts
+  line: 1
+  requested_change: Keep the iteration blocked until approval.
+
+Fix the requested changes before proceeding. Keep scope limited to the current task, acceptance criteria, and touched files.`;
+    expect(prompts[0]).toBe(makePrompt(target, "", 1, expectedFeedback));
     expect(readSummary(target)).toContain("Attempts: 2/3");
     expect(autoReviewArtifacts(target)).toEqual(["iteration-1-auto-review-summary.txt"]);
     expectNoScopeArtifacts(target);
