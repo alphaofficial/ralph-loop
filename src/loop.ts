@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { writeFileSync, readFileSync } from "node:fs";
 import { log, err, startSpinner, formatDuration } from "./ui";
 import { ensureTemplates, readProjectFile, updateRunnerBlock } from "./files";
+import { captureIterationGitBaseline, writeIterationGitArtifacts } from "./iteration-git";
 import { invokeProvider, type Provider } from "./providers";
 
 export function makePrompt(
@@ -223,6 +224,7 @@ async function runIteration(ctx: LoopContext, state: LoopState): Promise<Iterati
   log(`loop ${state.loop} (${ctx.provider}) · total ${total}${state.retries > 0 ? ` · retry ${state.retries}/${ctx.maxLoops}` : ""}`);
 
   const prompt = makePrompt(ctx.target, ctx.checkCmd, state.loop, state.lastFailedOutput, ctx.checkDisabled);
+  const gitBaseline = captureIterationGitBaseline(ctx.target, state.loop, ctx.canAutoCommit);
 
   const stopProvider = startSpinner(`🌀 ${ctx.provider} is working · loop ${state.loop}`);
   try {
@@ -232,6 +234,7 @@ async function runIteration(ctx: LoopContext, state: LoopState): Promise<Iterati
     err(`failed to run ${ctx.provider}: ${e instanceof Error ? e.message : e}`);
   }
   stopProvider();
+  writeIterationGitArtifacts(ctx.target, state.loop, gitBaseline);
 
   const summaryFile = join(ctx.target, ".ralph", "check-summary.txt");
   const checkOut = join(ctx.target, ".ralph", "check-output.txt");

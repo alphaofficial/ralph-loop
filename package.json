@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "bun run src/cli.ts",
     "build": "bun build --compile src/cli.ts --outfile ralph",
-    "typecheck": "bunx tsc --noEmit",
+    "typecheck": "node scripts/typecheck.mjs",
     "test": "bun test"
   },
   "devDependencies": {
