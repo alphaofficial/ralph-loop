@@ -176,7 +176,9 @@ describe("runAutoReviewGate", () => {
     expect(reviewCalls).toBe(2);
     expect(fixCalls).toBe(1);
     expect(prompts[0]).toContain("You are running one iteration of a Ralph loop");
-    expect(prompts[0]).toContain("blocked by auto-review before verification");
+    expect(prompts[0]).toContain("Your previous implementation attempt has blocking feedback");
+    expect(prompts[0]).toContain("Auto-review blocked this attempt before verification");
+    expect(prompts[0]).toContain("normal Ralph iteration prompt path");
     expect(prompts[0]).toContain("file: src/feature.ts");
     expect(prompts[0]).toContain("line: 1");
     expect(prompts[0]).toContain("Keep the iteration blocked until approval.");

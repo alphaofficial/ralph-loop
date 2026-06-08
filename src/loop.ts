@@ -18,9 +18,8 @@ export function makePrompt(
   target: string,
   checkCmd: string,
   loopNo: number,
-  lastFailedOutput = "",
-  checkDisabled = false,
-  autoReviewFeedback = ""
+  lastAttemptFeedback = "",
+  checkDisabled = false
 ) {
   const prd = readProjectFile(target, "PRD.md");
   const tasks = readProjectFile(target, "TASKS.md");
@@ -72,25 +71,13 @@ If you need to leave notes for the next fresh instance, put them in STATUS.md.
 IMPORTANT: Do not mark the task complete while any tests are failing. All tests must pass first, even if the failures look unrelated or pre-existing.
 `;
 
-  if (lastFailedOutput.trim()) {
+  if (lastAttemptFeedback.trim()) {
     content += `
-Your previous attempt FAILED verification. Here is the raw output:
+Your previous implementation attempt has blocking feedback:
 
-${lastFailedOutput.trimEnd()}
+${lastAttemptFeedback.trimEnd()}
 
 Fix the issue before proceeding.
-`;
-  }
-
-  if (autoReviewFeedback.trim()) {
-    content += `
-Your previous implementation attempt was blocked by auto-review before verification.
-Treat this review feedback as blocking context for the same task and fix it through this normal Ralph iteration prompt path.
-
-Auto-review requested changes:
-${autoReviewFeedback.trimEnd()}
-
-Fix the requested changes before proceeding. Keep scope limited to the current task, acceptance criteria, and touched files.
 `;
   }
 
@@ -304,12 +291,20 @@ function cleanupAutoReviewArtifacts(paths: string[]) {
 }
 
 function formatAutoReviewFeedback(result: Extract<AutoReviewResult, { status: "changes_requested" }>): string {
-  return result.changes
+  const changes = result.changes
     .map(
       (change) =>
         `- file: ${change.file}\n  line: ${change.line}\n  requested_change: ${change.requested_change}`
     )
     .join("\n");
+
+  return `Auto-review blocked this attempt before verification.
+Treat this feedback as blocking context for the same task and fix it through the normal Ralph iteration prompt path.
+
+Auto-review requested changes:
+${changes}
+
+Fix the requested changes before proceeding. Keep scope limited to the current task, acceptance criteria, and touched files.`;
 }
 
 export async function runAutoReviewGate(
@@ -412,9 +407,8 @@ Artifact: .ralph/iteration-${state.loop}-auto-review-${attempt}-result.json`;
       ctx.target,
       ctx.checkCmd,
       state.loop,
-      "",
-      ctx.checkDisabled,
-      formatAutoReviewFeedback(reviewResult)
+      formatAutoReviewFeedback(reviewResult),
+      ctx.checkDisabled
     );
 
     const stopFix = startSpinnerFn(
