@@ -117,6 +117,7 @@ Commands:
 
 Options:
   --max-loops N         Max consecutive failed retries per task (default: 8)
+  --max-review-loops N  Max auto-review attempts per task (default: 3)
   --check CMD           Override verification command
   --no-check            Disable runner-managed verification
   --dry-run             Show prompt without invoking
@@ -126,6 +127,8 @@ Options:
 Environment:
   RALPH_CHECK_CMD       Override verification command
   RALPH_MAX_LOOPS       Override max consecutive failed retries per task
+  RALPH_MAX_REVIEW_LOOPS
+                       Override max auto-review attempts per task
   RALPH_MODEL           Provider-specific model string
 `;
 
@@ -133,6 +136,7 @@ function parseArgs() {
   let command: string | undefined;
   let target = process.cwd();
   let maxLoops = parseInt(process.env.RALPH_MAX_LOOPS ?? "8", 10);
+  let maxReviewLoops = parseInt(process.env.RALPH_MAX_REVIEW_LOOPS ?? "3", 10);
   let checkCmd = "";
   let noCheck = false;
   let dryRun = false;
@@ -174,6 +178,17 @@ function parseArgs() {
           process.exit(1);
         }
         break;
+      case "--max-review-loops":
+        if (i + 1 >= args.length) {
+          console.error("--max-review-loops requires a value");
+          process.exit(1);
+        }
+        maxReviewLoops = parseInt(args[++i], 10);
+        if (isNaN(maxReviewLoops) || maxReviewLoops < 1) {
+          console.error("--max-review-loops must be a positive number");
+          process.exit(1);
+        }
+        break;
       case "--check":
         if (i + 1 >= args.length) {
           console.error("--check requires a value");
@@ -207,7 +222,7 @@ function parseArgs() {
     process.exit(1);
   }
 
-  return { command, target, maxLoops, checkCmd, noCheck, dryRun };
+  return { command, target, maxLoops, maxReviewLoops, checkCmd, noCheck, dryRun };
 }
 
 // Signal handling for clean exit
@@ -224,7 +239,7 @@ process.on("SIGTERM", () => {
 process.on("unhandledRejection", () => {});
 
 async function main() {
-  const { command, target, maxLoops, checkCmd, noCheck, dryRun } = parseArgs();
+  const { command, target, maxLoops, maxReviewLoops, checkCmd, noCheck, dryRun } = parseArgs();
 
   if (!command || command === "help") {
     console.log(USAGE);
@@ -335,7 +350,15 @@ async function main() {
 
   const provider = command as Provider;
   const check = noCheck ? "" : checkCmd || autoDetectCheck(target);
-  const code = await mainLoop(provider, target, maxLoops, check, dryRun, noCheck);
+  const code = await mainLoop(
+    provider,
+    target,
+    maxLoops,
+    maxReviewLoops,
+    check,
+    dryRun,
+    noCheck
+  );
   process.exit(code);
 }
 
