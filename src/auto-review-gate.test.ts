@@ -152,6 +152,15 @@ function requestedChange(file = "src/feature.ts"): AutoReviewChangesRequested {
   };
 }
 
+function taskCompletionDiff(task: string): string {
+  return `diff --git a/TASKS.md b/TASKS.md
+--- a/TASKS.md
++++ b/TASKS.md
+@@ -1,1 +1,1 @@
+-- [ ] ${task}
++- [x] ${task}`;
+}
+
 function fakeProvider(name: string, script: string): string {
   const fakeBin = mkdtempSync(join(tmpdir(), "ralph-provider-bin-"));
   cleanupTargets.push(fakeBin);
@@ -245,11 +254,31 @@ describe("runAutoReviewGate", () => {
 
   test("requests changes through the main iteration prompt path before re-reviewing", async () => {
     const { target, baseline } = createAutoReviewProject();
+    const task =
+      "Add focused tests or smoke coverage for approved, changes-requested, invalid-output, and exhausted-loop paths.";
     const prompts: string[] = [];
+    let expectedPrompt = "";
     let reviewCalls = 0;
     let fixCalls = 0;
+    const expectedFeedback = `Auto-review blocked this attempt before verification.
+Treat this feedback as blocking context for the same task and fix it through the normal Ralph iteration prompt path.
+
+Auto-review requested changes:
+- file: src/feature.ts
+  line: 1
+  requested_change: Keep the iteration blocked until approval.
+
+Fix the requested changes before proceeding. Keep scope limited to the current task, acceptance criteria, and touched files.`;
+    writeFileSync(
+      join(target, "TASKS.md"),
+      TASKS_TEXT.replace(`- [ ] ${task}`, `- [x] ${task}`)
+    );
 
     const result = await runAutoReviewGate(makeConfig(target), makeProgress(), baseline, {
+      captureReviewScopeFn: () => ({
+        diff: taskCompletionDiff(task),
+        touchedFiles: ["TASKS.md", "src/feature.ts"],
+      }),
       captureAutoReviewProviderFn: async () => {
         reviewCalls++;
         if (reviewCalls === 1) {
@@ -263,7 +292,15 @@ describe("runAutoReviewGate", () => {
       },
       invokeProviderFn: async (_provider, _target, prompt) => {
         fixCalls++;
+        expect(readFileSync(join(target, "TASKS.md"), "utf-8")).toContain(
+          `- [ ] ${task}`
+        );
+        expectedPrompt = makeLoopPrompt(target, "", 1, expectedFeedback);
         prompts.push(prompt);
+        writeFileSync(
+          join(target, "TASKS.md"),
+          TASKS_TEXT.replace(`- [ ] ${task}`, `- [x] ${task}`)
+        );
         return 0;
       },
       logFn: noopLog,
@@ -274,17 +311,11 @@ describe("runAutoReviewGate", () => {
     expect(result).toBe("review_approved");
     expect(reviewCalls).toBe(2);
     expect(fixCalls).toBe(1);
-    const expectedFeedback = `Auto-review blocked this attempt before verification.
-Treat this feedback as blocking context for the same task and fix it through the normal Ralph iteration prompt path.
-
-Auto-review requested changes:
-- file: src/feature.ts
-  line: 1
-  requested_change: Keep the iteration blocked until approval.
-
-Fix the requested changes before proceeding. Keep scope limited to the current task, acceptance criteria, and touched files.`;
-    expect(prompts[0]).toBe(makeLoopPrompt(target, "", 1, expectedFeedback));
+    expect(prompts[0]).toBe(expectedPrompt);
     expect(readSummary(target)).toContain("Attempts: 2/3");
+    expect(readFileSync(join(target, "TASKS.md"), "utf-8")).toContain(
+      `- [x] ${task}`
+    );
     expect(autoReviewArtifacts(target)).toEqual(["iteration-1-auto-review-summary.txt"]);
     expectNoScopeArtifacts(target);
   });
@@ -322,10 +353,20 @@ Fix the requested changes before proceeding. Keep scope limited to the current t
 
   test("stops after the review loop bound is exhausted", async () => {
     const { target, baseline } = createAutoReviewProject();
+    const task =
+      "Add focused tests or smoke coverage for approved, changes-requested, invalid-output, and exhausted-loop paths.";
     let reviewCalls = 0;
     let fixCalls = 0;
+    writeFileSync(
+      join(target, "TASKS.md"),
+      TASKS_TEXT.replace(`- [ ] ${task}`, `- [x] ${task}`)
+    );
 
     const result = await runAutoReviewGate(makeConfig(target, 2), makeProgress(), baseline, {
+      captureReviewScopeFn: () => ({
+        diff: taskCompletionDiff(task),
+        touchedFiles: ["TASKS.md", "src/feature.ts"],
+      }),
       captureAutoReviewProviderFn: async () => {
         reviewCalls++;
         return {
@@ -336,6 +377,9 @@ Fix the requested changes before proceeding. Keep scope limited to the current t
       },
       invokeProviderFn: async () => {
         fixCalls++;
+        expect(readFileSync(join(target, "TASKS.md"), "utf-8")).toContain(
+          `- [ ] ${task}`
+        );
         return 0;
       },
       logFn: noopLog,
@@ -347,6 +391,9 @@ Fix the requested changes before proceeding. Keep scope limited to the current t
     expect(reviewCalls).toBe(2);
     expect(fixCalls).toBe(1);
     expect(readSummary(target)).toContain("exhausted review loop after 2 attempts");
+    expect(readFileSync(join(target, "TASKS.md"), "utf-8")).toContain(
+      `- [ ] ${task}`
+    );
     expect(
       readFileSync(join(target, ".ralph", "iteration-1-auto-review-2-result.json"), "utf-8")
     ).toContain(`"status": "changes_requested"`);

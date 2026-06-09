@@ -2,6 +2,7 @@ import {
   mkdirSync,
   readFileSync,
   rmSync,
+  writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
 import {
@@ -138,6 +139,8 @@ Artifact: .ralph/iteration-${progress.loop}-auto-review-${attempt}-output.txt`;
       return "review_failed";
     }
 
+    uncheckCurrentTask(config.target);
+
     if (attempt >= config.maxReviewLoops) {
       debugArtifactPaths.push(
         writeAutoReviewResultArtifact(config.target, progress.loop, attempt, reviewResult)
@@ -179,6 +182,28 @@ Artifact: .ralph/iteration-${progress.loop}-auto-review-${attempt}-result.json`;
   }
 
   return "review_failed";
+}
+
+function uncheckCurrentTask(target: string) {
+  const tasksFile = join(target, "TASKS.md");
+  let tasks: string;
+  try {
+    tasks = readFileSync(tasksFile, "utf-8");
+  } catch {
+    return;
+  }
+
+  const lines = tasks.split("\n");
+  const taskLines = lines
+    .map((line, index) => ({ line, index }))
+    .filter(({ line }) => /^- \[[ x]\] /.test(line));
+  const currentTask = taskLines
+    .toReversed()
+    .find(({ line }) => line.startsWith("- [x] "));
+  if (!currentTask) return;
+
+  lines[currentTask.index] = currentTask.line.replace("- [x] ", "- [ ] ");
+  writeFileSync(tasksFile, lines.join("\n"));
 }
 
 export async function captureAutoReviewProvider(
