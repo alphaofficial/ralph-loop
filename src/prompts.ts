@@ -1,0 +1,320 @@
+import { readProjectFile } from "./files";
+import type { ReviewScope } from "./review-scope";
+
+export const MAX_CLARIFYING_QUESTIONS = 5;
+
+export function makeClarifyingQuestionsPrompt(description: string) {
+  return `Generate clarifying questions for creating Ralph project planning files.
+
+The user wants to build: ${description}
+
+Look at the existing codebase context, then return only a JSON array of 1 to ${MAX_CLARIFYING_QUESTIONS} concise, request-specific questions. Do not include markdown, prose, or answers.`;
+}
+
+export function makeGeneratePrompt(description: string, clarifications = "") {
+  return `You are generating project files for a Ralph loop.
+
+The user wants to build: ${description}
+
+${clarifications ? `Interactive clarification answers collected by Ralph CLI:
+${clarifications}
+
+` : ""}Generate exactly three files. Write each file to disk:
+
+1. PRD.md — Product requirements document with these sections:
+   # Goal
+   (what done looks like, 1-2 sentences)
+
+   ## Requirements
+   (bulleted list of specific requirements)
+
+   ## Technical requirements
+   (usually 3-7 concise bullets covering relevant interfaces/APIs/CLI flags/file formats/events/data contracts, affected modules/systems, high-level implementation strategy, and any integration/migration/compatibility/security/performance constraints; brief pseudocode or examples are okay when they clarify a contract or flow; avoid code-heavy detail, lengthy pseudocode, and low-level minutiae; use a short TBD/open question bullet if uncertain)
+
+   ## Constraints
+   (bulleted list of constraints — e.g. use existing patterns, keep changes small)
+
+   ## Definition of done
+   (bulleted list of success criteria — e.g. tests pass, behavior works)
+
+2. TASKS.md — Ordered checklist of tasks:
+   - [ ] task 1
+   - [ ] task 2
+   (break the work into small, focused tasks — one per iteration)
+
+3. STATUS.md — Initial status:
+   # Current status
+   Not started.
+
+   # Last attempt
+   N/A
+
+   # Decisions made
+   None yet.
+
+   # Tradeoffs and deviations
+   None yet.
+
+   # Known issues
+   None.
+
+   # Next step
+   (what the first iteration should do)
+
+Rules:
+- Be specific and actionable, not vague.
+- Keep PRD.md concise. The Technical requirements section should clarify implementation-relevant shape without bloating the PRD: usually 3-7 short bullets; brief pseudocode or examples are okay when they clarify a contract or flow; no code blocks, code-heavy detail, lengthy pseudocode, or low-level minutiae.
+- Tasks should be small enough for one AI iteration each.
+- Tasks should be flat, no hierarchy, no titles or sections in TASKS.md. Just a simple checklist.
+- Look at the existing codebase to inform requirements and constraints.
+- Write all three files to the project root directory. Overwrite them completely if they already exist.
+- In STATUS.md, keep the decisions/tradeoffs sections so future loop runs have an explicit place to record spec gaps, non-spec decisions, and notable deviations.
+- Add requirement that before each step is done, there are test coverage for new changes, and all tests pass.
+- Add requirement that after all steps are done, it is properly tested or verified before declaring the work complete.
+- Do NOT create any other files.
+- NEVER run git write commands (git add, git commit, git push). Only git read commands are permitted (git log, git diff, git show).
+`;
+}
+
+export function makeLoopPrompt(
+  target: string,
+  checkCmd: string,
+  loopNo: number,
+  lastAttemptFeedback = "",
+  checkDisabled = false,
+  options: {
+    tasksOverride?: string;
+    statusOverride?: string;
+    reviewFixTask?: string;
+  } = {}
+) {
+  const prd = readProjectFile(target, "PRD.md");
+  const tasks = options.tasksOverride ?? readProjectFile(target, "TASKS.md");
+  const status = options.statusOverride ?? readProjectFile(target, "STATUS.md");
+
+  let content = `You are running one iteration of a Ralph loop inside this project.
+
+The project planning files are embedded below. Use these embedded copies instead of reading PRD.md, TASKS.md, or STATUS.md via tool calls.
+
+<PRD>
+${prd}
+</PRD>
+
+<TASKS>
+${tasks}
+</TASKS>
+
+<STATUS>
+${status}
+</STATUS>
+
+CRITICAL: You must complete exactly ONE unchecked task from TASKS.md, then stop.
+Do NOT attempt multiple tasks. Another fresh instance will handle the next task.
+
+Rules:
+- Pick the FIRST unchecked task (- [ ]) from TASKS.md.
+- Implement that single task only.
+- Check off that one task (- [x]) in TASKS.md.
+- Update STATUS.md with what you changed and what the next task should be.
+- Keep STATUS.md concrete, short, and truthful.
+- Record any implementation notes, spec gaps, decisions, tradeoffs, or notable deviations you had to make in STATUS.md.
+- Do not touch other unchecked tasks.
+- If you encounter any code or test issues, fix them and update STATUS.md with what you did to fix them.
+- Do not add tests which simply restate the implementation. These provide zero confidence. Avoid spurious tests. 
+- Do not leave known issues unfixed before checking off the task.
+
+Iteration number: ${loopNo}
+Verification command after your run: ${checkDisabled ? "<disabled by --no-check>" : checkCmd || "<none auto-detected>"}
+
+Write a one-line commit message describing what you changed to .ralph/commit-msg.txt.
+Ensure you follow the project's existing commit message style. Use git log to see project commit messsage format and follow it strictly.
+
+IMPORTANT: ensure the generated commit message is concise, specific and no more than 48 charaters.
+
+IMPORTANT: NEVER run git write commands (git add, git commit, git push, git stash, git reset, git checkout, git revert). Only git read commands are permitted (git log, git diff, git show, git status, git blame). The ralph runner handles all commits automatically.
+
+If you need to leave notes for the next fresh instance, put them in STATUS.md.
+
+IMPORTANT: Do not mark the task complete while any tests are failing. All tests must pass first, even if the failures look unrelated or pre-existing.
+`;
+
+  if (options.reviewFixTask) {
+    content += `
+Auto-review fix mode:
+- The TASKS block above intentionally contains only the reviewed task.
+- Apply the auto-review feedback to that reviewed task only.
+- Do not start, modify, or check any other task in the real TASKS.md file.
+- After applying the fix, mark only the reviewed task complete in the real TASKS.md file.
+- Ralph will run the authoritative verification after auto-review approval.
+`;
+  }
+
+  if (lastAttemptFeedback.trim()) {
+    content += `
+Your previous implementation attempt has blocking feedback:
+
+${lastAttemptFeedback.trimEnd()}
+
+Fix the issue before proceeding.
+`;
+  }
+
+  return content;
+}
+
+export function makeAutoReviewPrompt(
+  target: string,
+  loop: number,
+  reviewScope: ReviewScope | null
+): string {
+  const prd = readProjectFile(target, "PRD.md");
+  const tasks = readProjectFile(target, "TASKS.md");
+  const status = readProjectFile(target, "STATUS.md");
+  const outputSchema = readProjectFile(
+    target,
+    ".ralph/auto-review-output-schema.json"
+  );
+  const scope = reviewScope ?? { diff: "", touchedFiles: [] };
+  const currentTask =
+    lastCheckedTask(tasks) ??
+    "Unable to determine the current iteration task.";
+
+  return `You are the blocking auto-review gate for Ralph iteration ${loop}.
+
+Your job is to do an adversarial review of only the work completed in this iteration before verification and auto-commit.
+
+Review rules:
+- Scope is limited to the completed task below, the relevant PRD acceptance criteria below, and the touched files from this iteration.
+- Focus on blockers only. Ignore nits, style comments, speculative refactors, and unrelated improvements.
+- Check whether the touched-file changes fully satisfy the task and acceptance criteria.
+- Check whether the touched-file changes are internally consistent with the surrounding code they directly affect.
+- Do not request changes in untouched files. Every requested change must target one of the touched files listed below.
+- If the output format would be invalid, return changes_requested instead of prose.
+
+Output contract:
+- Return ONLY valid JSON matching the schema in .ralph/auto-review-output-schema.json.
+- Your entire stdout must be directly parseable by JSON.parse and valid with: ajv validate -s .ralph/auto-review-output-schema.json -d output.json.
+- Return exactly one compact JSON object string produced by JSON.stringify(result) and nothing else.
+- The first character must be { and the final character must be }.
+- Do not include Markdown fences, prose, comments, headings, code blocks, or trailing text.
+
+Approved format:
+{"status":"approved","changes":[]}
+
+Changes requested format:
+{"status":"changes_requested","changes":[{"file":"relative/path.ts","line":123,"requested_change":"Concrete blocker to fix."}]}
+
+Auto-review output schema from .ralph/auto-review-output-schema.json:
+\`\`\`json
+${outputSchema}
+\`\`\`
+
+Each requested change must:
+- reference a touched file path exactly as listed below
+- use a real 1-based line number
+- describe the minimal blocking fix needed for approval
+- stay inside the scope of this iteration task
+
+Completed iteration task:
+- ${currentTask}
+
+Relevant PRD acceptance criteria:
+${extractRelevantAcceptanceCriteria(prd)}
+
+Touched files:
+${formatTouchedFiles(scope.touchedFiles)}
+
+Iteration diff:
+\`\`\`diff
+${scope.diff || "# No iteration diff was captured."}
+\`\`\`
+
+Project planning files are embedded below. Use these embedded copies instead of reading PRD.md, TASKS.md, or STATUS.md via tool calls.
+
+<PRD>
+${prd}
+</PRD>
+
+<TASKS>
+${tasks}
+</TASKS>
+
+<STATUS>
+${status}
+</STATUS>`;
+}
+
+function lastCheckedTask(tasks: string): string | null {
+  const checkedTasks = tasks
+    .split("\n")
+    .map((line) => line.match(/^- \[x\] (\S.*)$/)?.[1]?.trim())
+    .filter((task): task is string => !!task);
+
+  return checkedTasks.at(-1) ?? null;
+}
+
+function extractRelevantAcceptanceCriteria(prd: string): string {
+  const goal = sectionBody(prd, "Goal");
+  const bullets = [
+    ...sectionBullets(prd, "Requirements"),
+    ...sectionBullets(prd, "Technical requirements"),
+    ...sectionBullets(prd, "Constraints"),
+    ...sectionBullets(prd, "Definition of done"),
+  ];
+
+  const relevantKeywords = [
+    "review",
+    "prompt",
+    "scope",
+    "touched",
+    "acceptance",
+    "approved",
+    "changes_requested",
+    "verification",
+    "commit",
+    "untouched",
+  ];
+  const relevantBullets = bullets.filter((line) =>
+    relevantKeywords.some((keyword) => line.toLowerCase().includes(keyword))
+  );
+  const selectedBullets = relevantBullets.length > 0 ? relevantBullets : bullets;
+
+  const parts: string[] = [];
+  if (goal) parts.push(`Goal:\n${goal}`);
+  if (selectedBullets.length > 0) parts.push(selectedBullets.join("\n"));
+
+  return parts.join("\n\n") || "No PRD acceptance criteria were available.";
+}
+
+function sectionBody(markdown: string, heading: string): string {
+  const lines = markdown.split("\n");
+  const headingPattern = new RegExp(`^#{1,6} ${escapeRegex(heading)}$`);
+  const anyHeadingPattern = /^#{1,6} /;
+  const start = lines.findIndex((line) => headingPattern.test(line.trim()));
+  if (start === -1) return "";
+
+  const body: string[] = [];
+  for (let i = start + 1; i < lines.length; i++) {
+    const line = lines[i];
+    if (anyHeadingPattern.test(line.trim())) break;
+    body.push(line);
+  }
+
+  return body.join("\n").trim();
+}
+
+function sectionBullets(markdown: string, heading: string): string[] {
+  return sectionBody(markdown, heading)
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith("- "));
+}
+
+function formatTouchedFiles(touchedFiles: string[]): string {
+  if (touchedFiles.length === 0) return "- (none recorded)";
+  return touchedFiles.map((file) => `- ${file}`).join("\n");
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
