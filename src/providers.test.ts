@@ -28,6 +28,13 @@ describe("providerCommand", () => {
     expect(commands.get("pi")).not.toContain("--no-session");
   });
 
+  test("passes the target directory explicitly to OpenCode", () => {
+    const args = providerCommand("opencode", "/tmp/project", "prompt", "model").args;
+
+    expect(args).toContain("--dir");
+    expect(args[args.indexOf("--dir") + 1]).toBe("/tmp/project");
+  });
+
   test("passes model through normal runtime commands", () => {
     expect(providerCommand("codex", "/tmp/project", "prompt", "gpt-test").args).toContain(
       "gpt-test"

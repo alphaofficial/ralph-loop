@@ -45,6 +45,8 @@ export function providerCommand(
         providerBinary("opencode"),
         "run",
         "--dangerously-skip-permissions",
+        "--dir",
+        target,
       ];
       if (model) args.push("--model", model);
       args.push(prompt);

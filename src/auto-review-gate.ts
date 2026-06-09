@@ -45,6 +45,17 @@ type AutoReviewGateDeps = {
   startSpinnerFn?: typeof startSpinner;
 };
 
+type ReviewedTask = {
+  index: number;
+  uncheckedLine: string;
+};
+
+type ConstrainedReviewFixView = {
+  originalTasks: string;
+  originalStatus: string | null;
+  reviewedTask: ReviewedTask;
+};
+
 function autoReviewOutputSchemaPath(target: string): string {
   return join(target, ".ralph", "auto-review-output-schema.json");
 }
@@ -96,7 +107,10 @@ export async function runAutoReviewGate(
       reviewOutput = captured.stdout.trim()
         ? captured.stdout
         : reviewDiagnosticOutput;
-      reviewResult = parseAutoReviewResult(reviewOutput);
+      reviewResult = parseAutoReviewResult(
+        reviewOutput,
+        JSON.parse(readAutoReviewOutputSchema(config.target))
+      );
       if (captured.code !== 0) {
         errFn(`${config.provider} auto-review exited with code ${captured.code}`);
       }
@@ -139,7 +153,11 @@ Artifact: .ralph/iteration-${progress.loop}-auto-review-${attempt}-output.txt`;
       return "review_failed";
     }
 
-    uncheckCurrentTask(config.target);
+    const reviewedTask = selectReviewedTaskForFix(
+      config.target,
+      reviewScope,
+      reviewResult
+    );
 
     if (attempt >= config.maxReviewLoops) {
       debugArtifactPaths.push(
@@ -161,12 +179,22 @@ Artifact: .ralph/iteration-${progress.loop}-auto-review-${attempt}-result.json`;
       config.checkCmd,
       progress.loop,
       formatAutoReviewFeedback(reviewResult),
-      config.checkDisabled
+      config.checkDisabled,
+      reviewedTask
+        ? {
+            tasksOverride: reviewedTask.uncheckedLine,
+            statusOverride: reviewFixStatus(),
+            reviewFixTask: reviewedTask.uncheckedLine,
+          }
+        : {}
     );
 
     const stopFix = startSpinnerFn(
       `🛠️ ${config.provider} is addressing auto-review blockers · pass ${attempt}/${config.maxReviewLoops - 1}`
     );
+    const constrainedView = reviewedTask
+      ? installConstrainedReviewFixView(config.target, reviewedTask)
+      : null;
     try {
       const providerCode = await invokeProviderFn(
         config.provider,
@@ -177,6 +205,8 @@ Artifact: .ralph/iteration-${progress.loop}-auto-review-${attempt}-result.json`;
       if (providerCode !== 0) errFn(`${config.provider} exited with code ${providerCode}`);
     } catch (e) {
       errFn(`failed to run ${config.provider}: ${e instanceof Error ? e.message : e}`);
+    } finally {
+      if (constrainedView) restoreConstrainedReviewFixView(config.target, constrainedView);
     }
     stopFix();
   }
@@ -184,26 +214,135 @@ Artifact: .ralph/iteration-${progress.loop}-auto-review-${attempt}-result.json`;
   return "review_failed";
 }
 
-function uncheckCurrentTask(target: string) {
+function selectReviewedTaskForFix(
+  target: string,
+  reviewScope: ReturnType<typeof captureReviewScope>,
+  reviewResult: AutoReviewResult
+): ReviewedTask | null {
   const tasksFile = join(target, "TASKS.md");
   let tasks: string;
   try {
     tasks = readFileSync(tasksFile, "utf-8");
   } catch {
-    return;
+    return null;
   }
 
   const lines = tasks.split("\n");
   const taskLines = lines
     .map((line, index) => ({ line, index }))
     .filter(({ line }) => /^- \[[ x]\] /.test(line));
-  const currentTask = taskLines
-    .toReversed()
-    .find(({ line }) => line.startsWith("- [x] "));
-  if (!currentTask) return;
+  const reviewedTask =
+    taskFromReviewChangeFiles(taskLines, reviewResult) ??
+    taskFromTasksDiff(taskLines, reviewScope?.diff ?? "") ??
+    taskLines.toReversed().find(({ line }) => line.startsWith("- [x] "));
+  if (!reviewedTask) return null;
 
-  lines[currentTask.index] = currentTask.line.replace("- [x] ", "- [ ] ");
+  const uncheckedTask = reviewedTask.line.replace(/^- \[[ x]\] /, "- [ ] ");
+  lines[reviewedTask.index] = uncheckedTask;
   writeFileSync(tasksFile, lines.join("\n"));
+  return {
+    index: reviewedTask.index,
+    uncheckedLine: uncheckedTask,
+  };
+}
+
+function taskFromReviewChangeFiles(
+  taskLines: Array<{ line: string; index: number }>,
+  reviewResult: AutoReviewResult
+): { line: string; index: number } | null {
+  if (reviewResult.status !== "changes_requested") return null;
+
+  for (const change of reviewResult.changes) {
+    const task = taskLines.find(({ line }) => line.includes(change.file));
+    if (task) return task;
+  }
+  return null;
+}
+
+function taskFromTasksDiff(
+  taskLines: Array<{ line: string; index: number }>,
+  diff: string
+): { line: string; index: number } | null {
+  const completedTaskText = diff
+    .split("\n")
+    .map((line) => line.match(/^\+- \[x\] (.+)$/)?.[1]?.trim())
+    .find((task): task is string => !!task);
+  if (!completedTaskText) return null;
+
+  return (
+    taskLines.find(({ line }) => {
+      const taskText = line.replace(/^- \[[ x]\] /, "").trim();
+      return taskText === completedTaskText;
+    }) ?? null
+  );
+}
+
+function installConstrainedReviewFixView(
+  target: string,
+  reviewedTask: ReviewedTask
+): ConstrainedReviewFixView {
+  const tasksFile = join(target, "TASKS.md");
+  const statusFile = join(target, "STATUS.md");
+  const originalTasks = readFileSync(tasksFile, "utf-8");
+  let originalStatus: string | null = null;
+  try {
+    originalStatus = readFileSync(statusFile, "utf-8");
+  } catch {
+    originalStatus = null;
+  }
+
+  writeFileSync(tasksFile, `${reviewedTask.uncheckedLine}\n`);
+  writeFileSync(statusFile, reviewFixStatus());
+
+  return {
+    originalTasks,
+    originalStatus,
+    reviewedTask,
+  };
+}
+
+function restoreConstrainedReviewFixView(
+  target: string,
+  view: ConstrainedReviewFixView
+) {
+  const tasksFile = join(target, "TASKS.md");
+  const statusFile = join(target, "STATUS.md");
+  const constrainedTasks = readFileSync(tasksFile, "utf-8");
+  let constrainedStatus: string | null = null;
+  try {
+    constrainedStatus = readFileSync(statusFile, "utf-8");
+  } catch {
+    constrainedStatus = null;
+  }
+  const constrainedTask = constrainedTasks
+    .split("\n")
+    .find((line) => /^- \[[ x]\] /.test(line));
+  const completed = constrainedTask?.startsWith("- [x] ") ?? false;
+
+  const originalLines = view.originalTasks.split("\n");
+  const originalTaskText = view.reviewedTask.uncheckedLine.replace(/^- \[ \] /, "");
+  originalLines[view.reviewedTask.index] = `${completed ? "- [x]" : "- [ ]"} ${originalTaskText}`;
+  writeFileSync(tasksFile, originalLines.join("\n"));
+
+  if (
+    constrainedStatus !== null &&
+    constrainedStatus !== reviewFixStatus()
+  ) {
+    writeFileSync(statusFile, constrainedStatus);
+  } else if (view.originalStatus === null) {
+    rmSync(statusFile, { force: true });
+  } else {
+    writeFileSync(statusFile, view.originalStatus);
+  }
+}
+
+function reviewFixStatus(): string {
+  return `# Current status
+Auto-review requested changes for the single task in TASKS.md.
+
+# Next step
+Fix only that task, then mark only that task complete.
+`;
 }
 
 export async function captureAutoReviewProvider(
@@ -274,8 +413,8 @@ function autoReviewProviderCommand(
         providerBinary("opencode"),
         "run",
         "--dangerously-skip-permissions",
-        "--format",
-        "json",
+        "--dir",
+        target,
       ];
       if (model) args.push("--model", model);
       args.push(prompt);
@@ -375,8 +514,6 @@ function normalizeAutoReviewProviderStdout(provider: Provider, stdout: string): 
       return extractClaudeAutoReviewOutput(stdout);
     case "gemini":
       return extractGeminiAutoReviewOutput(stdout);
-    case "opencode":
-      return extractOpencodeAutoReviewOutput(stdout);
     default:
       return stdout;
   }
@@ -399,25 +536,6 @@ function extractGeminiAutoReviewOutput(stdout: string): string {
 
   if (typeof parsed.response === "string") return parsed.response;
   return stdout;
-}
-
-function extractOpencodeAutoReviewOutput(stdout: string): string {
-  const textParts: string[] = [];
-  for (const line of stdout.split("\n")) {
-    if (!line.trim()) continue;
-    const parsed = parseJsonObject(line);
-    if (
-      parsed?.type === "text" &&
-      parsed.part &&
-      typeof parsed.part === "object" &&
-      !Array.isArray(parsed.part) &&
-      typeof (parsed.part as Record<string, unknown>).text === "string"
-    ) {
-      textParts.push((parsed.part as Record<string, string>).text);
-    }
-  }
-
-  return textParts.length > 0 ? textParts.join("") : stdout;
 }
 
 function parseJsonObject(input: string): Record<string, unknown> | null {

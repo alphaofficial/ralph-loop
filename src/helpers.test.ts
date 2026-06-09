@@ -199,8 +199,19 @@ Reading additional input from stdin...`);
     });
   });
 
-  test("rejects changes_requested output without structured changes", () => {
+  test("rejects output that does not validate against the auto-review schema", () => {
     const result = parseAutoReviewResult(`{"status":"changes_requested"}`);
+
+    expect(result).toEqual({
+      status: "invalid",
+      reason: "schema_validation_failed",
+      message: "data must have required property 'changes'",
+    });
+    expect(isAutoReviewApproved(result)).toBe(false);
+  });
+
+  test("rejects changes_requested output with an empty changes array", () => {
+    const result = parseAutoReviewResult(`{"status":"changes_requested","changes":[]}`);
 
     expect(result).toEqual({
       status: "invalid",
@@ -208,7 +219,6 @@ Reading additional input from stdin...`);
       message:
         'changes_requested review output must include a non-empty "changes" array',
     });
-    expect(isAutoReviewApproved(result)).toBe(false);
   });
 
   test("rejects malformed change objects", () => {

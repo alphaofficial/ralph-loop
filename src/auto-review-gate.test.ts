@@ -19,7 +19,7 @@ import {
 } from "./auto-review-gate";
 import { ensureTemplates } from "./files";
 import { captureReviewScopeBaseline } from "./review-scope";
-import { makeLoopPrompt } from "./prompts";
+import { makeAutoReviewPrompt, makeLoopPrompt } from "./prompts";
 import type { AutoReviewChangesRequested } from "./helpers";
 
 const TASKS_TEXT = `- [x] Define auto-review result parsing/validation and failure behavior.
@@ -41,6 +41,13 @@ Add an auto-review gate inside each Ralph task iteration before verification and
 
 const STATUS_TEXT = `# Current status
 Auto-review gate is implemented.
+`;
+
+const REVIEW_FIX_STATUS = `# Current status
+Auto-review requested changes for the single task in TASKS.md.
+
+# Next step
+Fix only that task, then mark only that task complete.
 `;
 
 const noopStop = () => {};
@@ -252,7 +259,7 @@ describe("runAutoReviewGate", () => {
     expectNoScopeArtifacts(target);
   });
 
-  test("requests changes through the main iteration prompt path before re-reviewing", async () => {
+  test("requests changes through a constrained iteration prompt before re-reviewing", async () => {
     const { target, baseline } = createAutoReviewProject();
     const task =
       "Add focused tests or smoke coverage for approved, changes-requested, invalid-output, and exhausted-loop paths.";
@@ -292,14 +299,21 @@ Fix the requested changes before proceeding. Keep scope limited to the current t
       },
       invokeProviderFn: async (_provider, _target, prompt) => {
         fixCalls++;
-        expect(readFileSync(join(target, "TASKS.md"), "utf-8")).toContain(
-          `- [ ] ${task}`
+        expect(readFileSync(join(target, "TASKS.md"), "utf-8")).toBe(
+          `- [ ] ${task}\n`
         );
-        expectedPrompt = makeLoopPrompt(target, "", 1, expectedFeedback);
+        expect(readFileSync(join(target, "STATUS.md"), "utf-8")).toBe(
+          REVIEW_FIX_STATUS
+        );
+        expectedPrompt = makeLoopPrompt(target, "", 1, expectedFeedback, false, {
+          tasksOverride: `- [ ] ${task}`,
+          statusOverride: REVIEW_FIX_STATUS,
+          reviewFixTask: `- [ ] ${task}`,
+        });
         prompts.push(prompt);
         writeFileSync(
           join(target, "TASKS.md"),
-          TASKS_TEXT.replace(`- [ ] ${task}`, `- [x] ${task}`)
+          `- [x] ${task}\n`
         );
         return 0;
       },
@@ -312,12 +326,143 @@ Fix the requested changes before proceeding. Keep scope limited to the current t
     expect(reviewCalls).toBe(2);
     expect(fixCalls).toBe(1);
     expect(prompts[0]).toBe(expectedPrompt);
+    expect(prompts[0]).toContain(`<TASKS>\n- [ ] ${task}\n</TASKS>`);
+    expect(prompts[0]).not.toContain(
+      "- [ ] Run typecheck/build and a disposable tmp smoke test."
+    );
+    expect(prompts[0]).toContain(
+      "The TASKS block above intentionally contains only the reviewed task."
+    );
     expect(readSummary(target)).toContain("Attempts: 2/3");
     expect(readFileSync(join(target, "TASKS.md"), "utf-8")).toContain(
       `- [x] ${task}`
     );
+    expect(readFileSync(join(target, "TASKS.md"), "utf-8")).toContain(
+      "- [ ] Run typecheck/build and a disposable tmp smoke test."
+    );
+    expect(readFileSync(join(target, "STATUS.md"), "utf-8")).toBe(STATUS_TEXT);
     expect(autoReviewArtifacts(target)).toEqual(["iteration-1-auto-review-summary.txt"]);
     expectNoScopeArtifacts(target);
+  });
+
+  test("constrains review fixes to an unchecked task matching the reviewed file", async () => {
+    const { target, baseline } = createAutoReviewProject();
+    const reviewedTask =
+      'Create src/review-needed.txt with final exact text "review fixed".';
+    const previousTask =
+      'Create src/alpha.txt with exact text "alpha approved".';
+    const nextTask =
+      'Create src/checks-ran.txt with exact text "checks ran after review".';
+    const prompts: string[] = [];
+    let reviewCalls = 0;
+    let fixCalls = 0;
+
+    writeFileSync(
+      join(target, "TASKS.md"),
+      `- [x] ${previousTask}
+- [ ] ${reviewedTask}
+- [ ] ${nextTask}
+`
+    );
+
+    const result = await runAutoReviewGate(makeConfig(target), makeProgress(), baseline, {
+      captureReviewScopeFn: () => ({
+        diff: `diff --git a/src/review-needed.txt b/src/review-needed.txt
+new file mode 100644
+--- /dev/null
++++ b/src/review-needed.txt
+@@ -0,0 +1 @@
++needs review`,
+        touchedFiles: ["src/review-needed.txt"],
+      }),
+      captureAutoReviewProviderFn: async () => {
+        reviewCalls++;
+        if (reviewCalls === 1) {
+          return {
+            code: 0,
+            stdout: JSON.stringify(
+              requestedChange("src/review-needed.txt")
+            ),
+            stderr: "",
+          };
+        }
+        return { code: 0, stdout: `{"status":"approved","changes":[]}`, stderr: "" };
+      },
+      invokeProviderFn: async (_provider, _target, prompt) => {
+        fixCalls++;
+        expect(readFileSync(join(target, "TASKS.md"), "utf-8")).toBe(
+          `- [ ] ${reviewedTask}\n`
+        );
+        prompts.push(prompt);
+        writeFileSync(join(target, "TASKS.md"), `- [x] ${reviewedTask}\n`);
+        return 0;
+      },
+      logFn: noopLog,
+      errFn: noopLog,
+      startSpinnerFn: noopSpinner,
+    });
+
+    expect(result).toBe("review_approved");
+    expect(reviewCalls).toBe(2);
+    expect(fixCalls).toBe(1);
+    expect(prompts[0]).toContain(`<TASKS>\n- [ ] ${reviewedTask}\n</TASKS>`);
+    expect(prompts[0]).not.toContain(previousTask);
+    expect(readFileSync(join(target, "TASKS.md"), "utf-8")).toContain(
+      `- [x] ${previousTask}`
+    );
+    expect(readFileSync(join(target, "TASKS.md"), "utf-8")).toContain(
+      `- [x] ${reviewedTask}`
+    );
+    expect(readFileSync(join(target, "TASKS.md"), "utf-8")).toContain(
+      `- [ ] ${nextTask}`
+    );
+  });
+
+  test("preserves status updates from the constrained review fix view", async () => {
+    const { target, baseline } = createAutoReviewProject();
+    const task =
+      "Add focused tests or smoke coverage for approved, changes-requested, invalid-output, and exhausted-loop paths.";
+    const fixedStatus = `# Current status
+Review feedback fixed.
+
+# Next step
+Run auto-review again.
+`;
+    let reviewCalls = 0;
+
+    writeFileSync(
+      join(target, "TASKS.md"),
+      TASKS_TEXT.replace(`- [ ] ${task}`, `- [x] ${task}`)
+    );
+
+    const result = await runAutoReviewGate(makeConfig(target), makeProgress(), baseline, {
+      captureReviewScopeFn: () => ({
+        diff: taskCompletionDiff(task),
+        touchedFiles: ["TASKS.md", "src/feature.ts"],
+      }),
+      captureAutoReviewProviderFn: async () => {
+        reviewCalls++;
+        if (reviewCalls === 1) {
+          return {
+            code: 0,
+            stdout: JSON.stringify(requestedChange()),
+            stderr: "",
+          };
+        }
+        return { code: 0, stdout: `{"status":"approved","changes":[]}`, stderr: "" };
+      },
+      invokeProviderFn: async () => {
+        writeFileSync(join(target, "TASKS.md"), `- [x] ${task}\n`);
+        writeFileSync(join(target, "STATUS.md"), fixedStatus);
+        return 0;
+      },
+      logFn: noopLog,
+      errFn: noopLog,
+      startSpinnerFn: noopSpinner,
+    });
+
+    expect(result).toBe("review_approved");
+    expect(readFileSync(join(target, "STATUS.md"), "utf-8")).toBe(fixedStatus);
   });
 
   test("fails closed on invalid reviewer output", async () => {
@@ -405,6 +550,44 @@ Fix the requested changes before proceeding. Keep scope limited to the current t
   });
 });
 
+describe("makeAutoReviewPrompt", () => {
+  test("uses the last checked task instead of inferring the task from git diff", () => {
+    const { target } = createAutoReviewProject();
+    writeFileSync(
+      join(target, "TASKS.md"),
+      `- [x] Create src/alpha.txt with exact text "alpha approved".
+- [ ] Run the review-needed auto-review drill for src/review-needed.txt.
+- [ ] Create src/checks-ran.txt with exact text "checks ran after review".
+`
+    );
+
+    const prompt = makeAutoReviewPrompt(target, 1, {
+      diff: `diff --git a/TASKS.md b/TASKS.md
+--- a/TASKS.md
++++ b/TASKS.md
+@@ -1,3 +1,3 @@
+ - [x] Create src/alpha.txt with exact text "alpha approved".
+-- [ ] Run the review-needed auto-review drill for src/review-needed.txt.
++- [x] Run the review-needed auto-review drill for src/review-needed.txt.
+ - [ ] Create src/checks-ran.txt with exact text "checks ran after review".
+diff --git a/src/alpha.txt b/src/alpha.txt
+new file mode 100644
+--- /dev/null
++++ b/src/alpha.txt
+@@ -0,0 +1 @@
++alpha approved`,
+      touchedFiles: ["src/alpha.txt"],
+    });
+
+    expect(prompt).toContain(
+      'Completed iteration task:\n- Create src/alpha.txt with exact text "alpha approved".'
+    );
+    expect(prompt).not.toContain(
+      "Completed iteration task:\n- Run the review-needed auto-review drill"
+    );
+  });
+});
+
 describe("captureAutoReviewProvider", () => {
   test("captures Codex final-message output instead of terminal transcript", async () => {
     const target = tmpProject();
@@ -486,14 +669,14 @@ JSON
     expect(result.stdout).toBe('{"status":"approved","changes":[]}');
   });
 
-  test("extracts OpenCode text events from JSONL capture output", async () => {
+  test("uses the OpenCode runtime command for auto-review", async () => {
     const target = tmpProject();
+    const argsFile = join(target, "opencode-args.txt");
     const fakeOpencode = fakeProvider(
       "opencode",
       `#!/bin/sh
-printf '%s\\n' '{"type":"step_start","part":{"type":"step-start"}}'
-printf '%s\\n' '{"type":"text","part":{"type":"text","text":"{\\"status\\":\\"approved\\",\\"changes\\":[]}"}}'
-printf '%s\\n' '{"type":"step_finish","part":{"reason":"stop"}}'
+printf '%s\\n' "$@" > '${argsFile}'
+printf '{"status":"approved","changes":[]}'
 `
     );
     process.env.RALPH_OPENCODE_BIN = fakeOpencode;
@@ -501,5 +684,14 @@ printf '%s\\n' '{"type":"step_finish","part":{"reason":"stop"}}'
     const result = await captureAutoReviewProvider("opencode", target, "prompt");
 
     expect(result.stdout).toBe('{"status":"approved","changes":[]}');
+    const args = readFileSync(argsFile, "utf-8").trim().split("\n");
+    expect(args).toEqual([
+      "run",
+      "--dangerously-skip-permissions",
+      "--dir",
+      target,
+      "prompt",
+    ]);
   });
+
 });

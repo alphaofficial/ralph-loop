@@ -1,5 +1,7 @@
 import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import Ajv from "ajv";
+import { AutoReviewOutputSchema } from "./auto-review-schema";
 import { updateRunnerBlock } from "./files";
 import { err, log } from "./ui";
 
@@ -25,6 +27,7 @@ export type AutoReviewInvalidReason =
   | "empty_output"
   | "missing_json"
   | "invalid_json"
+  | "schema_validation_failed"
   | "invalid_status"
   | "approved_has_changes"
   | "missing_changes"
@@ -41,7 +44,12 @@ export type AutoReviewResult =
   | AutoReviewChangesRequested
   | AutoReviewInvalid;
 
-export function parseAutoReviewResult(output: string): AutoReviewResult {
+const ajv = new Ajv();
+
+export function parseAutoReviewResult(
+  output: string,
+  schema: object = AutoReviewOutputSchema
+): AutoReviewResult {
   const trimmed = output.trim();
   if (!trimmed) {
     return invalidAutoReviewResult("empty_output", "review output was empty");
@@ -69,11 +77,16 @@ export function parseAutoReviewResult(output: string): AutoReviewResult {
     return invalidAutoReviewResult("invalid_json", "review output JSON must be an object");
   }
 
+  const validate = ajv.compile(schema);
+  if (!validate(parsed)) {
+    return invalidAutoReviewResult(
+      "schema_validation_failed",
+      ajv.errorsText(validate.errors)
+    );
+  }
+
   const record = parsed as Record<string, unknown>;
   if (record.status === "approved") {
-    if (record.changes === undefined) {
-      return { status: "approved", changes: [] };
-    }
     if (!Array.isArray(record.changes) || record.changes.length > 0) {
       return invalidAutoReviewResult(
         "approved_has_changes",

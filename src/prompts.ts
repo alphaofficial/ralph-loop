@@ -81,11 +81,16 @@ export function makeLoopPrompt(
   checkCmd: string,
   loopNo: number,
   lastAttemptFeedback = "",
-  checkDisabled = false
+  checkDisabled = false,
+  options: {
+    tasksOverride?: string;
+    statusOverride?: string;
+    reviewFixTask?: string;
+  } = {}
 ) {
   const prd = readProjectFile(target, "PRD.md");
-  const tasks = readProjectFile(target, "TASKS.md");
-  const status = readProjectFile(target, "STATUS.md");
+  const tasks = options.tasksOverride ?? readProjectFile(target, "TASKS.md");
+  const status = options.statusOverride ?? readProjectFile(target, "STATUS.md");
 
   let content = `You are running one iteration of a Ralph loop inside this project.
 
@@ -133,6 +138,17 @@ If you need to leave notes for the next fresh instance, put them in STATUS.md.
 IMPORTANT: Do not mark the task complete while any tests are failing. All tests must pass first, even if the failures look unrelated or pre-existing.
 `;
 
+  if (options.reviewFixTask) {
+    content += `
+Auto-review fix mode:
+- The TASKS block above intentionally contains only the reviewed task.
+- Apply the auto-review feedback to that reviewed task only.
+- Do not start, modify, or check any other task in the real TASKS.md file.
+- After applying the fix, mark only the reviewed task complete in the real TASKS.md file.
+- Ralph will run the authoritative verification after auto-review approval.
+`;
+  }
+
   if (lastAttemptFeedback.trim()) {
     content += `
 Your previous implementation attempt has blocking feedback:
@@ -154,10 +170,13 @@ export function makeAutoReviewPrompt(
   const prd = readProjectFile(target, "PRD.md");
   const tasks = readProjectFile(target, "TASKS.md");
   const status = readProjectFile(target, "STATUS.md");
+  const outputSchema = readProjectFile(
+    target,
+    ".ralph/auto-review-output-schema.json"
+  );
   const scope = reviewScope ?? { diff: "", touchedFiles: [] };
   const currentTask =
-    completedTaskFromTasksDiff(scope.diff) ??
-    firstUncheckedTask(tasks) ??
+    lastCheckedTask(tasks) ??
     "Unable to determine the current iteration task.";
 
   return `You are the blocking auto-review gate for Ralph iteration ${loop}.
@@ -173,15 +192,22 @@ Review rules:
 - If the output format would be invalid, return changes_requested instead of prose.
 
 Output contract:
-- Return exactly one compact JSON string produced by JSON.stringify(result) and nothing else.
+- Return ONLY valid JSON matching the schema in .ralph/auto-review-output-schema.json.
+- Your entire stdout must be directly parseable by JSON.parse and valid with: ajv validate -s .ralph/auto-review-output-schema.json -d output.json.
+- Return exactly one compact JSON object string produced by JSON.stringify(result) and nothing else.
 - The first character must be { and the final character must be }.
-- Do not include Markdown fences, prose, comments, headings, or trailing text.
+- Do not include Markdown fences, prose, comments, headings, code blocks, or trailing text.
 
 Approved format:
 {"status":"approved","changes":[]}
 
 Changes requested format:
 {"status":"changes_requested","changes":[{"file":"relative/path.ts","line":123,"requested_change":"Concrete blocker to fix."}]}
+
+Auto-review output schema from .ralph/auto-review-output-schema.json:
+\`\`\`json
+${outputSchema}
+\`\`\`
 
 Each requested change must:
 - reference a touched file path exactly as listed below
@@ -218,41 +244,13 @@ ${status}
 </STATUS>`;
 }
 
-function firstUncheckedTask(tasks: string): string | null {
-  for (const line of tasks.split("\n")) {
-    const match = line.match(/^- \[ \] (\S.*)$/);
-    if (match) return match[1].trim();
-  }
-  return null;
-}
+function lastCheckedTask(tasks: string): string | null {
+  const checkedTasks = tasks
+    .split("\n")
+    .map((line) => line.match(/^- \[x\] (\S.*)$/)?.[1]?.trim())
+    .filter((task): task is string => !!task);
 
-function completedTaskFromTasksDiff(diff: string): string | null {
-  const marker = "diff --git a/TASKS.md b/TASKS.md";
-  const start = diff.indexOf(marker);
-  if (start === -1) return null;
-
-  const nextPatch = diff.indexOf("\ndiff --git ", start + marker.length);
-  const tasksPatch = (nextPatch === -1 ? diff.slice(start) : diff.slice(start, nextPatch)).trimEnd();
-  if (!tasksPatch) return null;
-
-  const uncheckedTasks = new Set<string>();
-  const checkedTasks: string[] = [];
-
-  for (const line of tasksPatch.split("\n")) {
-    const match = line.match(/^([+-])- \[([ x])\] (\S.*)$/);
-    if (!match) continue;
-
-    const [, operation, state, task] = match;
-    const trimmedTask = task.trim();
-    if (operation === "-" && state === " ") uncheckedTasks.add(trimmedTask);
-    if (operation === "+" && state === "x") checkedTasks.push(trimmedTask);
-  }
-
-  for (const task of checkedTasks) {
-    if (uncheckedTasks.has(task)) return task;
-  }
-
-  return checkedTasks[0] ?? null;
+  return checkedTasks.at(-1) ?? null;
 }
 
 function extractRelevantAcceptanceCriteria(prd: string): string {

@@ -6,6 +6,7 @@ import {
   appendFileSync,
 } from "node:fs";
 import { join, dirname } from "node:path";
+import { AutoReviewOutputSchema } from "./auto-review-schema";
 import { PRD_TEMPLATE, TASKS_TEMPLATE, STATUS_TEMPLATE } from "./templates";
 
 export function readProjectFile(target: string, filename: string): string {
@@ -56,7 +57,7 @@ export function ensureTemplates(target: string) {
     "auto-review-output-schema.json"
   );
   const autoReviewOutputSchemaContent =
-    '{"type":"object","additionalProperties":false,"required":["status","changes"],"properties":{"status":{"type":"string","enum":["approved","changes_requested"]},"changes":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["file","line","requested_change"],"properties":{"file":{"type":"string"},"line":{"type":"integer"},"requested_change":{"type":"string"}}}}}}\n';
+    JSON.stringify(AutoReviewOutputSchema) + "\n";
   writeFileSync(autoReviewOutputSchemaFile, autoReviewOutputSchemaContent, {
     mode: 0o600,
   });
