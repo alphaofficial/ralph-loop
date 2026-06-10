@@ -6,7 +6,6 @@ import {
   appendFileSync,
 } from "node:fs";
 import { join, dirname } from "node:path";
-import { AutoReviewOutputSchema } from "./auto-review-schema";
 import { PRD_TEMPLATE, TASKS_TEMPLATE, STATUS_TEMPLATE } from "./templates";
 
 export function readProjectFile(target: string, filename: string): string {
@@ -50,17 +49,6 @@ export function ensureTemplates(target: string) {
   for (const [path, template] of files) {
     if (!existsSync(path)) writeFileSync(path, template);
   }
-
-  const autoReviewOutputSchemaFile = join(
-    target,
-    ".ralph",
-    "auto-review-output-schema.json"
-  );
-  const autoReviewOutputSchemaContent =
-    JSON.stringify(AutoReviewOutputSchema) + "\n";
-  writeFileSync(autoReviewOutputSchemaFile, autoReviewOutputSchemaContent, {
-    mode: 0o600,
-  });
 
   ensureGitExcludes(target);
 }

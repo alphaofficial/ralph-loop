@@ -78,16 +78,12 @@ ralph opencode ~/code/my-app
 while (unchecked tasks in TASKS.md) {
   spawn fresh AI agent
   agent picks ONE unchecked task, implements it, checks it off
-  run bounded auto-review on the iteration diff
-  if auto-review requests changes, feed them back through the same task prompt
   run verification command
   write result to STATUS.md
 }
 ```
 
 Each iteration gets a fresh context — no memory of previous runs. Progress is tracked in files and git history, not in the AI's context window.
-
-Auto-review is a blocking gate before verification and auto-commit. It reviews only the current iteration's touched files and diff, returns structured approval or requested changes, and fails closed on invalid reviewer output.
 
 ## Verification command
 The runner auto-detects a check command in this order:
@@ -125,17 +121,6 @@ Override it if needed:
 ```bash
 ralph claude --max-loops 12
 RALPH_MAX_LOOPS=12 ralph codex
-```
-
-## Max auto-review loops
-Default is 3.
-
-This caps auto-review attempts for a single task. If auto-review requests changes, Ralph feeds those blockers back through the normal task prompt, re-runs auto-review, and only proceeds to verification after approval. Invalid reviewer output or exhausting the review limit stops the run before verification and commit.
-
-Override it if needed:
-```bash
-ralph codex --max-review-loops 5
-RALPH_MAX_REVIEW_LOOPS=5 ralph claude
 ```
 
 ## Model overrides
