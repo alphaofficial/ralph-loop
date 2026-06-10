@@ -3,12 +3,7 @@ export const GENERATION_PROVIDERS = ["claude", "copilot", "codex", "gemini", "he
 
 export type Provider = (typeof LOOP_PROVIDERS)[number];
 
-export function providerCommand(
-  provider: Provider,
-  target: string,
-  prompt: string,
-  model?: string
-): {
+export function providerCommand(provider: Provider, target: string, prompt: string, model?: string): {
   args: string[];
   stdin?: Blob;
   env?: Record<string, string | undefined>;
@@ -16,8 +11,9 @@ export function providerCommand(
   switch (provider) {
     case "claude": {
       const env = { ...process.env };
+      delete env.ANTHROPIC_API_KEY;
       const args = [
-        providerBinary("claude"),
+        "claude",
         "-p",
         "--dangerously-skip-permissions",
         "--add-dir",
@@ -29,7 +25,7 @@ export function providerCommand(
 
     case "codex": {
       const args = [
-        providerBinary("codex"),
+        "codex",
         "exec",
         "--skip-git-repo-check",
         "--sandbox",
@@ -42,11 +38,9 @@ export function providerCommand(
 
     case "opencode": {
       const args = [
-        providerBinary("opencode"),
+        "opencode",
         "run",
         "--dangerously-skip-permissions",
-        "--dir",
-        target,
       ];
       if (model) args.push("--model", model);
       args.push(prompt);
@@ -55,7 +49,7 @@ export function providerCommand(
 
     case "copilot": {
       const args = [
-        providerBinary("copilot"),
+        "copilot",
         "-p",
         prompt,
         "--allow-all",
@@ -65,19 +59,19 @@ export function providerCommand(
     }
 
     case "gemini": {
-      const args = [providerBinary("gemini"), "-p", prompt];
+      const args = ["gemini", "-p", prompt];
       if (model) args.push("--model", model);
       return { args };
     }
 
     case "hermes": {
-      const args = [providerBinary("hermes"), "--oneshot", prompt];
+      const args = ["hermes", "chat", "-q", prompt];
       if (model) args.push("--model", model);
       return { args };
     }
 
     case "pi": {
-      const args = [providerBinary("pi"), "-p", prompt];
+      const args = ["pi", "-p", prompt];
       if (model) args.push("--model", model);
       return { args };
     }
@@ -103,7 +97,26 @@ export async function invokeProvider(
   return await proc.exited;
 }
 
-function providerBinary(provider: Provider): string {
-  const envName = `RALPH_${provider.toUpperCase()}_BIN`;
-  return process.env[envName] ?? provider;
+export async function captureProvider(
+  provider: Provider,
+  target: string,
+  prompt: string,
+  model?: string
+): Promise<{ code: number; stdout: string; stderr: string }> {
+  const command = providerCommand(provider, target, prompt, model);
+  const proc = Bun.spawn(command.args, {
+    cwd: target,
+    env: command.env,
+    stdin: command.stdin,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+
+  const [stdout, stderr, code] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
+
+  return { code, stdout, stderr };
 }
