@@ -80,10 +80,14 @@ while (unchecked tasks in TASKS.md) {
   agent picks ONE unchecked task, implements it, checks it off
   run verification command
   write result to STATUS.md
+  run auto review gate
+  write review JSON to STATUS.md for the next iteration
 }
 ```
 
 Each iteration gets a fresh context — no memory of previous runs. Progress is tracked in files and git history, not in the AI's context window.
+
+Auto-review runs once after each committed iteration. If the reviewer exits unsuccessfully or returns empty output, Ralph reverts the commit and records unavailable review feedback in `STATUS.md`. Otherwise, Ralph records the reviewer output in `STATUS.md` so the next normal iteration can address it.
 
 ## Verification command
 The runner auto-detects a check command in this order:
@@ -115,7 +119,7 @@ ralph claude --no-check
 ## Max loops
 Default is 8.
 
-This caps consecutive failed retries on the current task before the runner gives up.
+This caps consecutive failed iterations before the runner gives up.
 
 Override it if needed:
 ```bash
@@ -142,7 +146,7 @@ $EDITOR PRD.md TASKS.md STATUS.md
 ralph claude
 ```
 
-Then review the diff, commit, and either rerun or stop.
+Ralph runs iterations until tasks are complete, committing successful iterations automatically.
 
 ## Example PRD
 ```md
@@ -196,6 +200,10 @@ None.
 
 # Next step
 Inspect the existing billing and auth code.
+
+<!-- RALPH_REVIEW_FEEDBACK:START -->
+{"status":"approved","changes":[]}
+<!-- RALPH_REVIEW_FEEDBACK:END -->
 ```
 
 ## Design choices

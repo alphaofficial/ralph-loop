@@ -1,78 +1,16 @@
 import { join } from "node:path";
 import { writeFileSync, readFileSync } from "node:fs";
 import { log, err, startSpinner, formatDuration } from "./ui";
-import { ensureTemplates, readProjectFile, updateRunnerBlock } from "./files";
+import {
+  ensureTemplates,
+  updateRunnerBlock,
+} from "./files";
 import { invokeProvider, type Provider } from "./providers";
-
-export function makePrompt(
-  target: string,
-  checkCmd: string,
-  loopNo: number,
-  lastFailedOutput = "",
-  checkDisabled = false
-) {
-  const prd = readProjectFile(target, "PRD.md");
-  const tasks = readProjectFile(target, "TASKS.md");
-  const status = readProjectFile(target, "STATUS.md");
-
-  let content = `You are running one iteration of a Ralph loop inside this project.
-
-The project planning files are embedded below. Use these embedded copies instead of reading PRD.md, TASKS.md, or STATUS.md via tool calls.
-
-<PRD>
-${prd}
-</PRD>
-
-<TASKS>
-${tasks}
-</TASKS>
-
-<STATUS>
-${status}
-</STATUS>
-
-CRITICAL: You must complete exactly ONE unchecked task from TASKS.md, then stop.
-Do NOT attempt multiple tasks. Another fresh instance will handle the next task.
-
-Rules:
-- Pick the FIRST unchecked task (- [ ]) from TASKS.md.
-- Implement that single task only.
-- Check off that one task (- [x]) in TASKS.md.
-- Update STATUS.md with what you changed and what the next task should be.
-- Keep STATUS.md concrete, short, and truthful.
-- Record any implementation notes, spec gaps, decisions, tradeoffs, or notable deviations you had to make in STATUS.md.
-- Do not touch other unchecked tasks.
-- If you encounter any code or test issues, fix them and update STATUS.md with what you did to fix them.
-- Do not add tests which simply restate the implementation. These provide zero confidence. Avoid spurious tests. 
-- Do not leave known issues unfixed before checking off the task.
-
-Iteration number: ${loopNo}
-Verification command after your run: ${checkDisabled ? "<disabled by --no-check>" : checkCmd || "<none auto-detected>"}
-
-Write a one-line commit message describing what you changed to .ralph/commit-msg.txt.
-Ensure you follow the project's existing commit message style. Use git log to see project commit messsage format and follow it strictly.
-
-IMPORTANT: ensure the generated commit message is concise, specific and no more than 48 charaters.
-
-IMPORTANT: NEVER run git write commands (git add, git commit, git push, git stash, git reset, git checkout, git revert). Only git read commands are permitted (git log, git diff, git show, git status, git blame). The ralph runner handles all commits automatically.
-
-If you need to leave notes for the next fresh instance, put them in STATUS.md.
-
-IMPORTANT: Do not mark the task complete while any tests are failing. All tests must pass first, even if the failures look unrelated or pre-existing.
-`;
-
-  if (lastFailedOutput.trim()) {
-    content += `
-Your previous attempt FAILED verification. Here is the raw output:
-
-${lastFailedOutput.trimEnd()}
-
-Fix the issue before proceeding.
-`;
-  }
-
-  return content;
-}
+import {
+  lastCommitReviewScope,
+  runAutoReviewFeedback,
+} from "./review";
+import { makeLoopPrompt } from "./prompts";
 
 export const SKIP = Symbol("skip");
 
@@ -135,10 +73,10 @@ function isGitRepo(target: string): boolean {
   return check.exitCode === 0;
 }
 
-export async function autoCommit(target: string, loop: number, canCommit = isGitRepo(target)) {
+export async function autoCommit(target: string, loop: number, canCommit = isGitRepo(target)): Promise<boolean> {
   // Only commit if target is a git repo
   const isGitRepo = canCommit;
-  if (!isGitRepo) return;
+  if (!isGitRepo) return false;
 
   // Stage all changes
   const add = Bun.spawnSync(["git", "-C", target, "add", "-A"], {
@@ -148,7 +86,7 @@ export async function autoCommit(target: string, loop: number, canCommit = isGit
   if (add.exitCode !== 0) {
     const output = commandOutput(add);
     err(`git add failed${output ? `: ${output}` : ""}`);
-    return;
+    return false;
   }
 
   // Check if there's anything to commit
@@ -156,11 +94,11 @@ export async function autoCommit(target: string, loop: number, canCommit = isGit
     stdout: "pipe",
     stderr: "pipe",
   });
-  if (diff.exitCode === 0) return; // nothing staged
+  if (diff.exitCode === 0) return false; // nothing staged
   if (diff.exitCode !== 1) {
     const output = commandOutput(diff);
     err(`git diff --cached failed${output ? `: ${output}` : ""}`);
-    return;
+    return false;
   }
 
   // Use AI-generated commit message if available, fall back to task description
@@ -184,9 +122,11 @@ export async function autoCommit(target: string, loop: number, canCommit = isGit
   ]);
   if (exitCode === 0) {
     log(`✅ committed: ${msg}`);
+    return true;
   } else {
     const output = [stderr, stdout].map((text) => text.trim()).filter(Boolean).join("\n");
     err(`git commit failed${output ? `: ${output}` : ""}`);
+    return false;
   }
 }
 
@@ -197,6 +137,59 @@ function first120Lines(file: string): string {
   } catch {
     return "";
   }
+}
+
+type TaskSnapshot = {
+  index: number;
+  text: string;
+};
+
+function firstUncheckedTask(target: string): TaskSnapshot | null {
+  let content: string;
+  try {
+    content = readFileSync(join(target, "TASKS.md"), "utf-8");
+  } catch {
+    return null;
+  }
+
+  const index = content.split("\n").findIndex((line) => line.startsWith("- [ ] "));
+  if (index === -1) return null;
+
+  return {
+    index,
+    text: content.split("\n")[index].slice("- [ ] ".length),
+  };
+}
+
+function uncheckTask(target: string, task: TaskSnapshot | null): boolean {
+  if (!task) return false;
+
+  const tasksFile = join(target, "TASKS.md");
+  let content: string;
+  try {
+    content = readFileSync(tasksFile, "utf-8");
+  } catch {
+    return false;
+  }
+
+  const lines = content.split("\n");
+  const checked = `- [x] ${task.text}`;
+  const unchecked = `- [ ] ${task.text}`;
+
+  if (lines[task.index] === checked) {
+    lines[task.index] = unchecked;
+    writeFileSync(tasksFile, lines.join("\n"));
+    return true;
+  }
+
+  const movedIndex = lines.findIndex((line) => line === checked);
+  if (movedIndex !== -1) {
+    lines[movedIndex] = unchecked;
+    writeFileSync(tasksFile, lines.join("\n"));
+    return true;
+  }
+
+  return false;
 }
 
 type LoopContext = {
@@ -211,18 +204,18 @@ type LoopContext = {
 
 type LoopState = {
   loop: number;
-  retries: number;
-  lastFailedOutput: string;
+  consecutiveFailures: number;
 };
 
-type IterationResult = { completed: true } | { completed: false; lastFailedOutput: string };
+type IterationResult = { completed: boolean };
 
 async function runIteration(ctx: LoopContext, state: LoopState): Promise<IterationResult> {
   const iterationStart = Date.now();
   const total = formatDuration(Date.now() - ctx.loopStart);
-  log(`loop ${state.loop} (${ctx.provider}) · total ${total}${state.retries > 0 ? ` · retry ${state.retries}/${ctx.maxLoops}` : ""}`);
+  log(`loop ${state.loop} (${ctx.provider}) · total ${total}${state.consecutiveFailures > 0 ? ` · failure ${state.consecutiveFailures}/${ctx.maxLoops}` : ""}`);
 
-  const prompt = makePrompt(ctx.target, ctx.checkCmd, state.loop, state.lastFailedOutput, ctx.checkDisabled);
+  const taskForFailureRecovery = firstUncheckedTask(ctx.target);
+  const prompt = makeLoopPrompt(ctx.target, ctx.checkCmd, state.loop, ctx.checkDisabled);
 
   const stopProvider = startSpinner(`🌀 ${ctx.provider} is working · loop ${state.loop}`);
   try {
@@ -264,30 +257,24 @@ async function runIteration(ctx: LoopContext, state: LoopState): Promise<Iterati
   updateRunnerBlock(join(ctx.target, "STATUS.md"), summary);
 
   if (code === 0 || code === SKIP) {
-    await autoCommit(ctx.target, state.loop, ctx.canAutoCommit);
+    const committed = await autoCommit(ctx.target, state.loop, ctx.canAutoCommit);
+    if (committed) {
+      const reviewPassed = await runAutoReviewFeedback(
+        ctx.provider,
+        ctx.target,
+        state.loop,
+        lastCommitReviewScope(ctx.target),
+        process.env.RALPH_MODEL
+      );
+      if (!reviewPassed) return { completed: false };
+    }
     return { completed: true };
   }
-  return { completed: false, lastFailedOutput: readFileSync(checkOut, "utf-8") };
-}
 
-async function drainTasks(ctx: LoopContext, state: LoopState): Promise<number> {
-  while (!allTasksComplete(ctx.target)) {
-    state.loop++;
-    const result = await runIteration(ctx, state);
-    if (result.completed) {
-      state.retries = 0;
-      state.lastFailedOutput = "";
-      continue;
-    }
-    state.lastFailedOutput = result.lastFailedOutput;
-    state.retries++;
-    if (state.retries >= ctx.maxLoops) {
-      const total = formatDuration(Date.now() - ctx.loopStart);
-      err(`⚠️ ${state.retries} consecutive failures on the same task — giving up after ${total}`);
-      return 1;
-    }
+  if (uncheckTask(ctx.target, taskForFailureRecovery)) {
+    log("reopened task after failed verification");
   }
-  return 0;
+  return { completed: false };
 }
 
 export async function mainLoop(
@@ -302,7 +289,7 @@ export async function mainLoop(
 
   if (dryRun) {
     log("dry run, not invoking " + provider);
-    console.log(makePrompt(target, checkCmd, 1, "", checkDisabled));
+    console.log(makeLoopPrompt(target, checkCmd, 1, checkDisabled));
     return 0;
   }
 
@@ -315,10 +302,27 @@ export async function mainLoop(
     canAutoCommit: isGitRepo(target),
     loopStart: Date.now(),
   };
-  const state: LoopState = { loop: 0, retries: 0, lastFailedOutput: "" };
+  const state: LoopState = { loop: 0, consecutiveFailures: 0 };
 
-  const initialCode = await drainTasks(ctx, state);
-  if (initialCode !== 0) return initialCode;
+  while (!allTasksComplete(ctx.target)) {
+    state.loop++;
+    const result = await runIteration(ctx, state);
+    if (result.completed) {
+      state.consecutiveFailures = 0;
+      continue;
+    }
+
+    state.consecutiveFailures++;
+    if (allTasksComplete(ctx.target)) {
+      err("iteration failed but no unchecked tasks remain");
+      return 1;
+    }
+    if (state.consecutiveFailures >= ctx.maxLoops) {
+      const total = formatDuration(Date.now() - ctx.loopStart);
+      err(`⚠️ ${state.consecutiveFailures} consecutive failed iterations — giving up after ${total}`);
+      return 1;
+    }
+  }
 
   const total = formatDuration(Date.now() - ctx.loopStart);
   log(`all tasks complete in ${state.loop} loops (${total})`);
