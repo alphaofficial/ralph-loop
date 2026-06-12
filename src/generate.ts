@@ -3,14 +3,11 @@ import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { log, startSpinner } from "./ui";
 import { invokeProvider, providerCommand, type Provider } from "./providers";
 import { ensureGitExcludes } from "./files";
-
-const MAX_CLARIFYING_QUESTIONS = 5;
-
-const QUESTION_PROMPT = (description: string) => `Generate clarifying questions for creating Ralph project planning files.
-
-The user wants to build: ${description}
-
-Look at the existing codebase context, then return only a JSON array of 1 to ${MAX_CLARIFYING_QUESTIONS} concise, request-specific questions. Do not include markdown, prose, or answers.`;
+import {
+  MAX_CLARIFYING_QUESTIONS,
+  makeClarifyingQuestionsPrompt,
+  makeGeneratePrompt,
+} from "./prompts";
 
 export function parseQuestions(output: string): string[] {
   let parsed: unknown;
@@ -41,7 +38,7 @@ async function generateClarifyingQuestions(
   description: string,
   model?: string
 ): Promise<string[]> {
-  const command = providerCommand(provider, target, QUESTION_PROMPT(description), model);
+  const command = providerCommand(provider, target, makeClarifyingQuestionsPrompt(description), model);
   const proc = Bun.spawn(command.args, {
     cwd: target,
     env: command.env,
@@ -96,69 +93,6 @@ async function collectClarifications(questions: readonly string[]): Promise<stri
   }
 }
 
-const GEN_PROMPT = (description: string, clarifications = "") => `You are generating project files for a Ralph loop.
-
-The user wants to build: ${description}
-
-${clarifications ? `Interactive clarification answers collected by Ralph CLI:
-${clarifications}
-
-` : ""}Generate exactly three files. Write each file to disk:
-
-1. PRD.md — Product requirements document with these sections:
-   # Goal
-   (what done looks like, 1-2 sentences)
-
-   ## Requirements
-   (bulleted list of specific requirements)
-
-   ## Technical requirements
-   (usually 3-7 concise bullets covering relevant interfaces/APIs/CLI flags/file formats/events/data contracts, affected modules/systems, high-level implementation strategy, and any integration/migration/compatibility/security/performance constraints; brief pseudocode or examples are okay when they clarify a contract or flow; avoid code-heavy detail, lengthy pseudocode, and low-level minutiae; use a short TBD/open question bullet if uncertain)
-
-   ## Constraints
-   (bulleted list of constraints — e.g. use existing patterns, keep changes small)
-
-   ## Definition of done
-   (bulleted list of success criteria — e.g. tests pass, behavior works)
-
-2. TASKS.md — Ordered checklist of tasks:
-   - [ ] task 1
-   - [ ] task 2
-   (break the work into small, focused tasks — one per iteration)
-
-3. STATUS.md — Initial status:
-   # Current status
-   Not started.
-
-   # Last attempt
-   N/A
-
-   # Decisions made
-   None yet.
-
-   # Tradeoffs and deviations
-   None yet.
-
-   # Known issues
-   None.
-
-   # Next step
-   (what the first iteration should do)
-
-Rules:
-- Be specific and actionable, not vague.
-- Keep PRD.md concise. The Technical requirements section should clarify implementation-relevant shape without bloating the PRD: usually 3-7 short bullets; brief pseudocode or examples are okay when they clarify a contract or flow; no code blocks, code-heavy detail, lengthy pseudocode, or low-level minutiae.
-- Tasks should be small enough for one AI iteration each.
-- Tasks should be flat, no hierarchy, no titles or sections in TASKS.md. Just a simple checklist.
-- Look at the existing codebase to inform requirements and constraints.
-- Write all three files to the project root directory. Overwrite them completely if they already exist.
-- In STATUS.md, keep the decisions/tradeoffs sections so future loop runs have an explicit place to record spec gaps, non-spec decisions, and notable deviations.
-- Add requirement that before each step is done, there are test coverage for new changes, and all tests pass.
-- Add requirement that after all steps are done, it is properly tested or verified before declaring the work complete.
-- Do NOT create any other files.
-- NEVER run git write commands (git add, git commit, git push). Only git read commands are permitted (git log, git diff, git show).
-`;
-
 export async function generate(
   provider: Provider,
   target: string,
@@ -173,7 +107,7 @@ export async function generate(
     ? await collectClarifications(await generateClarifyingQuestions(provider, target, description, model))
     : "";
   const promptFile = join(target, ".ralph", "prompt-gen.txt");
-  const prompt = GEN_PROMPT(description, clarifications);
+  const prompt = makeGeneratePrompt(description, clarifications);
   writeFileSync(promptFile, prompt, { mode: 0o600 });
 
   const stop = startSpinner(`🌀 Generating project files with ${provider}`);

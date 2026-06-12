@@ -56,12 +56,22 @@ export function ensureTemplates(target: string) {
 export function updateRunnerBlock(statusFile: string, content: string) {
   const START = "<!-- RALPH_RUNNER:START -->";
   const END = "<!-- RALPH_RUNNER:END -->";
-  const block = `${START}\n${content.trimEnd()}\n${END}`;
+  updateManagedBlock(statusFile, START, END, content);
+}
+
+export function updateReviewFeedbackBlock(statusFile: string, content: string) {
+  const START = "<!-- RALPH_REVIEW_FEEDBACK:START -->";
+  const END = "<!-- RALPH_REVIEW_FEEDBACK:END -->";
+  updateManagedBlock(statusFile, START, END, content);
+}
+
+function updateManagedBlock(statusFile: string, start: string, end: string, content: string) {
+  const block = `${start}\n${content.trimEnd()}\n${end}`;
 
   let text = existsSync(statusFile) ? readFileSync(statusFile, "utf-8") : "";
 
   const pattern = new RegExp(
-    `${escapeRegex(START)}[\\s\\S]*?${escapeRegex(END)}`
+    `${escapeRegex(start)}[\\s\\S]*?${escapeRegex(end)}`
   );
 
   if (pattern.test(text)) {

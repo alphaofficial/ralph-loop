@@ -5,7 +5,6 @@ import { ensureTemplates } from "./files";
 import { autoDetectCheck } from "./detect";
 import { mainLoop } from "./loop";
 import { generate } from "./generate";
-import { runCapturedReview } from "./review";
 import { cleanup, log } from "./ui";
 import {
   GENERATION_PROVIDERS,
@@ -105,8 +104,6 @@ Commands:
   upgrade               Upgrade Ralph to the latest release binary
   uninstall             Remove Ralph from RALPH_HOME, default ~/.ralph
   gen <provider> "desc" Generate PRD, TASKS, STATUS from a description
-  review <provider> [target_dir]
-                        Run a simplification review prompt
   claude                Run loop with Claude Code
   copilot               Run loop with GitHub Copilot CLI
   codex                 Run loop with Codex
@@ -116,7 +113,7 @@ Commands:
   pi                    Run loop with Pi
 
 Options:
-  --max-loops N         Max consecutive failed retries per task (default: 8)
+  --max-loops N         Max consecutive failed iterations (default: 8)
   --check CMD           Override verification command
   --no-check            Disable runner-managed verification
   --dry-run             Show prompt without invoking
@@ -125,7 +122,7 @@ Options:
 
 Environment:
   RALPH_CHECK_CMD       Override verification command
-  RALPH_MAX_LOOPS       Override max consecutive failed retries per task
+  RALPH_MAX_LOOPS       Override max consecutive failed iterations
   RALPH_MODEL           Provider-specific model string
 `;
 
@@ -301,30 +298,6 @@ async function main() {
       process.exit(1);
     }
     process.exit(0);
-  }
-
-  if (command === "review") {
-    const args = process.argv.slice(3);
-    if (args.length < 1) {
-      console.error("Usage: ralph review <provider> [target_dir]");
-      process.exit(1);
-    }
-    if (args.length > 2) {
-      console.error(`Unexpected extra argument: ${args[2]}`);
-      process.exit(1);
-    }
-    const reviewProvider = args[0] as Provider;
-    if (!GENERATION_PROVIDERS.includes(reviewProvider)) {
-      console.error(`Unknown provider: ${reviewProvider}`);
-      process.exit(1);
-    }
-    const reviewTarget = args[1] ? resolve(args[1]) : process.cwd();
-    try {
-      process.exit(await runCapturedReview(reviewProvider, reviewTarget, process.env.RALPH_MODEL));
-    } catch (e) {
-      console.error(e instanceof Error ? e.message : e);
-      process.exit(1);
-    }
   }
 
   if (!LOOP_PROVIDERS.includes(command as Provider)) {
