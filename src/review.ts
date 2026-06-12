@@ -15,6 +15,13 @@ export async function runAutoReviewFeedback(
   model?: string
 ): Promise<boolean> {
   const stop = startSpinner(`🔎 auto reviewing loop ${loop}`);
+  let stopped = false;
+  const stopSpinner = () => {
+    if (stopped) return;
+    stop();
+    stopped = true;
+  };
+
   try {
     const result = await captureProvider(
       provider,
@@ -22,6 +29,8 @@ export async function runAutoReviewFeedback(
       makeAutoReviewFeedbackPrompt(target, loop, scope),
       model
     );
+    stopSpinner();
+
     if (result.code !== 0) {
       err(`${provider} auto review exited with code ${result.code}`);
       return failAutoReview(
@@ -42,7 +51,7 @@ export async function runAutoReviewFeedback(
     }
 
     writeReviewFeedbackStatus(target, output);
-    log("📝 auto review feedback written to STATUS.md");
+    log("📝 auto review completed");
     return true;
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
@@ -52,7 +61,7 @@ export async function runAutoReviewFeedback(
       JSON.stringify({ status: "unavailable", reason: message })
     );
   } finally {
-    stop();
+    stopSpinner();
   }
 }
 

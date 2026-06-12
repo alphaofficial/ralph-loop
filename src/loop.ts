@@ -130,15 +130,6 @@ export async function autoCommit(target: string, loop: number, canCommit = isGit
   }
 }
 
-function first120Lines(file: string): string {
-  try {
-    const content = readFileSync(file, "utf-8");
-    return content.split("\n").slice(0, 120).join("\n");
-  } catch {
-    return "";
-  }
-}
-
 type TaskSnapshot = {
   index: number;
   text: string;
@@ -235,21 +226,18 @@ async function runIteration(ctx: LoopContext, state: LoopState): Promise<Iterati
   const code = await runCheck(ctx.target, ctx.checkCmd, checkOut, ctx.checkDisabled);
   stopCheck();
 
-  const output = first120Lines(checkOut);
   const iterTime = formatDuration(Date.now() - iterationStart);
   let summary: string;
   if (code === SKIP) {
-    summary = "Verification: SKIPPED\n" + output;
+    summary = "Verification: SKIPPED\n";
     log(`${ctx.checkDisabled ? "verification disabled by --no-check" : "no check command"} · ${iterTime}`);
   } else if (code === 0) {
     summary = "Verification: PASS\n";
-    if (ctx.checkCmd) summary += `Command: ${ctx.checkCmd}\n\n`;
-    summary += output;
+    if (ctx.checkCmd) summary += `Command: ${ctx.checkCmd}\n`;
     log(`✅ checks passed · ${iterTime}`);
   } else {
     summary = "Verification: FAIL\n";
-    if (ctx.checkCmd) summary += `Command: ${ctx.checkCmd}\n\n`;
-    summary += output;
+    if (ctx.checkCmd) summary += `Command: ${ctx.checkCmd}\n`;
     log(`⚠️ checks failed · ${iterTime}`);
   }
 

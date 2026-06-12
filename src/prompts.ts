@@ -160,6 +160,12 @@ Review rules:
 - Check whether the touched-file changes fully satisfy the task and acceptance criteria.
 - Check whether the touched-file changes are internally consistent with the surrounding code they directly affect.
 - Do not request changes in untouched files. Every requested change must target one of the touched files listed below.
+- Look out for implementation correctness in the scoe
+- Look out for spurious tests. 
+    - we should NEVER assert mock behavior
+    - we should NEVER add test-only methods to production classes
+    - we should NEVER mock without understanding dependencies
+    - we should NEVER write tests for non-application behaviour
 
 Output contract:
 - Return ONLY valid JSON.
