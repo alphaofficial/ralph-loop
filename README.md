@@ -76,10 +76,12 @@ ralph opencode ~/code/my-app
 ## How it works
 ```
 while (unchecked tasks in TASKS.md) {
+  Ralph selects the first unchecked task
   spawn fresh AI agent
-  agent picks ONE unchecked task, implements it, checks it off
-  hard-fail if changed files exceed the PRD/task file contract
+  agent implements the selected task without editing TASKS.md
+  hard-fail if changed files exceed the PRD/current-task file contract
   run verification command
+  Ralph checks the selected task after guard and verification pass
   write result to STATUS.md
   run auto review gate
   write review JSON to STATUS.md for the next iteration
