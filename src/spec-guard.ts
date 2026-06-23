@@ -1,12 +1,10 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import type { CurrentTask, TaskFileContract, TaskFileOp } from "./task-state";
 
-export type FileOp = "C" | "M" | "D";
+export type FileOp = TaskFileOp;
 
-export type FileContract = {
-  path: string;
-  op: FileOp;
-};
+export type FileContract = TaskFileContract;
 
 export type TaskContract = {
   description: string;
@@ -16,6 +14,16 @@ export type TaskContract = {
 };
 
 export type StaticGuardInput = {
+  prd: string;
+  currentTask: CurrentTask;
+  changedFiles: string[];
+  tasksBefore?: string;
+  tasksAfter?: string;
+  beforeExists?: Map<string, boolean>;
+  afterExists?: Map<string, boolean>;
+};
+
+type LegacyStaticGuardInput = {
   prd: string;
   tasks: string;
   changedFiles: string[];
@@ -66,6 +74,18 @@ export function parsePrdFilesToTouch(prd: string): FileContract[] {
   }
 
   return files;
+}
+
+export function parsePrdTestCases(prd: string): string[] {
+  const section = extractSection(prd, "Test cases");
+  const testCases: string[] = [];
+
+  for (const rawLine of section.split("\n")) {
+    const match = rawLine.trim().match(/^-\s+(.+)$/);
+    if (match) testCases.push(match[1].trim());
+  }
+
+  return testCases;
 }
 
 export function parseFirstUncheckedTask(tasks: string): TaskContract | null {
@@ -126,7 +146,77 @@ export function parseGitStatusFiles(output: string): string[] {
   return [...new Set(files)];
 }
 
-export function validateStaticGuard(input: StaticGuardInput): StaticGuardResult {
+export function staticGuard(input: StaticGuardInput): StaticGuardResult {
+  const failures: string[] = [];
+  const prdFiles = parsePrdFilesToTouch(input.prd);
+  const prdTestCases = parsePrdTestCases(input.prd);
+  const task = input.currentTask;
+  const prdMap = contractMap(prdFiles, "PRD ## Files to touch", failures);
+  const taskMap = contractMap(task.files, "selected task Files", failures);
+
+  if (prdFiles.length === 0) {
+    failures.push("PRD.md is missing a valid ## Files to touch tree.");
+  }
+
+  if (task.files.length === 0) failures.push("Selected task is missing a valid Files: line.");
+  if (!task.expectation) failures.push("Selected task is missing an Expectation: line.");
+  if (task.testCases.length === 0) failures.push("Selected task is missing a valid Test Cases: line.");
+
+  if (input.tasksBefore !== undefined && input.tasksAfter !== undefined && input.tasksBefore !== input.tasksAfter) {
+    failures.push("TASKS.md changed during provider execution; the Ralph runner owns task state.");
+  }
+
+  for (const [path, op] of taskMap) {
+    const prdOp = prdMap.get(path);
+    if (!prdOp) {
+      failures.push(`${path} is listed in the task but not in PRD.md ## Files to touch.`);
+    } else if (prdOp !== op) {
+      failures.push(`${path} has operation ${op} in the task but ${prdOp} in PRD.md.`);
+    }
+  }
+
+  const prdTestCaseSet = new Set(prdTestCases);
+  for (const testCase of task.testCases) {
+    if (!prdTestCaseSet.has(testCase)) {
+      failures.push(`${testCase} is listed in the task but not in PRD.md ## Test cases.`);
+    }
+  }
+
+  const changedFileSet = new Set(input.changedFiles.map(normalizePath));
+
+  for (const path of changedFileSet) {
+    if (path === "PRD.md") {
+      failures.push("PRD.md was modified during an implementation iteration.");
+      continue;
+    }
+    if (path === "TASKS.md") {
+      failures.push("TASKS.md was modified during provider execution; the Ralph runner owns task state.");
+      continue;
+    }
+    if (path === "STATUS.md" || path.startsWith(".ralph/")) continue;
+    if (!taskMap.has(path)) {
+      failures.push(`${path} changed but is not listed in the selected task Files: line.`);
+    }
+  }
+
+  for (const [path, op] of taskMap) {
+    if (!input.beforeExists || !input.afterExists) continue;
+    const changed = changedFileSet.has(path);
+    const before = input.beforeExists?.get(path) ?? false;
+    const after = input.afterExists?.get(path) ?? false;
+
+    if (op === "C" && before) failures.push(`${path} is marked C but existed before the iteration.`);
+    if (op === "C" && !after) failures.push(`${path} is marked C but does not exist after the iteration.`);
+    if (op === "M" && changed && !before) failures.push(`${path} is marked M but did not exist before the iteration.`);
+    if (op === "M" && changed && !after) failures.push(`${path} is marked M but does not exist after the iteration.`);
+    if (op === "D" && !before) failures.push(`${path} is marked D but did not exist before the iteration.`);
+    if (op === "D" && after) failures.push(`${path} is marked D but still exists after the iteration.`);
+  }
+
+  return { passed: failures.length === 0, failures };
+}
+
+export function validateStaticGuard(input: LegacyStaticGuardInput): StaticGuardResult {
   const failures: string[] = [];
   const prdFiles = parsePrdFilesToTouch(input.prd);
   const task = safeParseTask(input.tasks, failures);
