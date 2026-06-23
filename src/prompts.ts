@@ -111,20 +111,15 @@ export function makeLoopPrompt(
   checkDisabled = false
 ) {
   const prd = readProjectFile(target, "PRD.md");
-  const tasks = readProjectFile(target, "TASKS.md");
   const status = readProjectFile(target, "STATUS.md");
 
   let content = `You are running one iteration of a Ralph loop inside this project.
 
-The project planning files are embedded below. Use these embedded copies instead of reading PRD.md, TASKS.md, or STATUS.md via tool calls.
+The project planning context is embedded below. Use these embedded copies instead of reading PRD.md, TASKS.md, or STATUS.md via tool calls.
 
 <PRD>
 ${prd}
 </PRD>
-
-<TASKS>
-${tasks}
-</TASKS>
 
 <STATUS>
 ${status}
@@ -145,14 +140,14 @@ Rules:
 - Inspect the JSON inside the STATUS.md block delimited by "<!-- RALPH_REVIEW_FEEDBACK:START -->" and "<!-- RALPH_REVIEW_FEEDBACK:END -->". If it has "status":"changes_requested", address those requested changes as part of this iteration.
 - Do not modify the RALPH_REVIEW_FEEDBACK block in STATUS.md. Ralph manages that block.
 - Touch only implementation files listed in the selected task's Files.
-- Touch operational Ralph files like STATUS.md and .ralph/ files as needed, but do not touch PRD.md or TASKS.md. These files are not tracked by git, so it is very important to avoid touching them unless you are updating STATUS.md with what you changed and what the next task should be.
+- Touch operational Ralph files like STATUS.md and .ralph/ files as needed, but do not touch PRD.md or TASKS.md.
 - Every implementation file in the selected task's Files: line must also appear in PRD.md ## Files to touch. The selected task's Files line owns the per-iteration C/M/D marker.
 - Do not modify PRD.md during implementation.
 - Do not reinterpret, simplify, or expand the spec.
 - If an unlisted file or unspecified behavior appears necessary, do not implement it. Update STATUS.md with the spec gap and leave the task unchecked.
 - Implement only the checks listed in the selected task's Test Cases: line, except for direct equivalents required by the target project's test framework.
 - Do not edit TASKS.md. The Ralph runner owns checking and unchecking the selected task.
-- Update STATUS.md with what you changed and what the next task should be.
+- Update STATUS.md with what you changed, but do not choose or rewrite the next task. Ralph owns task progression.
 - Keep STATUS.md concrete, short, and truthful.
 - Do not add rationale or departure sections to STATUS.md. PRD.md is authoritative. If the spec blocks implementation, record the blocking spec gap under Known issues and leave the task unchecked.
 - Do not touch other unchecked tasks.
@@ -208,6 +203,7 @@ ${currentTask.testCases.map((testCase) => `- ${testCase}`).join("\n")}
 export function makeAutoReviewFeedbackPrompt(
   target: string,
   loop: number,
+  currentTask: CurrentTask | null,
   scope: ReviewScope
 ): string {
   return `You are reviewing Ralph loop iteration ${loop}.
@@ -237,24 +233,18 @@ Output contract:
 Touched files:
 ${formatTouchedFiles(scope.touchedFiles)}
 
+${formatCurrentTask(currentTask)}
+
 Iteration diff:
 \`\`\`diff
 ${scope.diff || "# No iteration diff was captured."}
 \`\`\`
 
-Project planning artifacts are embedded below. Use these embedded copies instead of reading PRD.md, TASKS.md, or STATUS.md via tool calls.
+The PRD is embedded below. Use this embedded copy and the selected current task instead of reading PRD.md, TASKS.md, or STATUS.md via tool calls.
 
 <PRD>
 ${readProjectFile(target, "PRD.md")}
-</PRD>
-
-<TASKS>
-${readProjectFile(target, "TASKS.md")}
-</TASKS>
-
-<STATUS>
-${readProjectFile(target, "STATUS.md")}
-</STATUS>`;
+</PRD>`;
 }
 
 function formatTouchedFiles(files: string[]): string {

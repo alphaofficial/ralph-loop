@@ -5,6 +5,7 @@ import {
   makeAutoReviewFeedbackPrompt,
   type ReviewScope,
 } from "./prompts";
+import type { CurrentTask } from "./task-state";
 import { err, log, startSpinner } from "./ui";
 
 /** Runs auto review after commit step.
@@ -22,6 +23,7 @@ export async function runAutoReviewFeedback(
   provider: Provider,
   target: string,
   loop: number,
+  currentTask: CurrentTask,
   scope: ReviewScope,
   model?: string
 ): Promise<boolean> {
@@ -37,7 +39,7 @@ export async function runAutoReviewFeedback(
     const result = await captureProvider(
       provider,
       target,
-      makeAutoReviewFeedbackPrompt(target, loop, scope),
+      makeAutoReviewFeedbackPrompt(target, loop, currentTask, scope),
       model
     );
     stopSpinner();

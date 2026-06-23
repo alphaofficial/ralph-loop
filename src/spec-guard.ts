@@ -67,8 +67,6 @@ export function staticGuard(input: StaticGuardInput): StaticGuardResult {
   const task = input.currentTask;
   const prdMap = contractMap(prdFiles, "PRD ## Files to touch", failures);
   const taskMap = contractMap(task.files, "selected task Files", failures);
-  const tasksBefore = stringInput(input, "tasksBefore");
-  const tasksAfter = stringInput(input, "tasksAfter");
   const beforeExists = mapInput(input, "beforeExists");
   const afterExists = mapInput(input, "afterExists");
 
@@ -76,13 +74,8 @@ export function staticGuard(input: StaticGuardInput): StaticGuardResult {
     failures.push("PRD.md is missing a valid ## Files to touch tree.");
   }
 
-  if (task.files.length === 0) failures.push("Selected task is missing a valid Files: line.");
   if (!task.expectation) failures.push("Selected task is missing an Expectation: line.");
   if (task.testCases.length === 0) failures.push("Selected task is missing a valid Test Cases: line.");
-
-  if (tasksBefore !== undefined && tasksAfter !== undefined && tasksBefore !== tasksAfter) {
-    failures.push("TASKS.md changed during provider execution; the Ralph runner owns task state.");
-  }
 
   for (const [path, op] of taskMap) {
     if (!prdMap.has(path)) {
@@ -186,11 +179,6 @@ function leadingSpaces(value: string): number {
 
 function normalizePath(path: string): string {
   return path.replace(/\\/g, "/").replace(/^\.\//, "").replace(/\/+/g, "/").trim();
-}
-
-function stringInput(input: StaticGuardInput, key: string): string | undefined {
-  const value = input[key];
-  return typeof value === "string" ? value : undefined;
 }
 
 function mapInput(input: StaticGuardInput, key: string): Map<string, boolean> | undefined {

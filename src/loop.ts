@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { writeFileSync, readFileSync } from "node:fs";
 import { log, err, startSpinner, formatDuration } from "./ui";
-import { ensureTemplates, readProjectFile, updateRunnerBlock } from "./files";
+import { ensureTemplates, readProjectFile, updateRunnerBlock, updateStatusNextStep } from "./files";
 import { invokeProvider, type Provider } from "./providers";
 import {
   baselineFileExistence,
@@ -28,10 +28,19 @@ function writeUncheckedTask(target: string, currentTask: CurrentTask): void {
 function tryUncheckCurrentTask(target: string, currentTask: CurrentTask): boolean {
   try {
     writeUncheckedTask(target, currentTask);
+    updateNextStepFromTasks(target);
     return true;
   } catch {
     return false;
   }
+}
+
+function updateNextStepFromTasks(target: string): void {
+  const nextTask = getTask(readProjectFile(target, "TASKS.md"));
+  updateStatusNextStep(
+    join(target, "STATUS.md"),
+    nextTask ? `Next task: ${nextTask.description}` : "All tasks complete."
+  );
 }
 
 export function handleStaticGuardFailure(
@@ -42,6 +51,7 @@ export function handleStaticGuardFailure(
   let summary = staticSummary;
   try {
     writeUncheckedTask(target, currentTask);
+    updateNextStepFromTasks(target);
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     summary += `${summary.endsWith("\n") ? "" : "\n"}Task rollback failed: ${message}\n`;
@@ -237,12 +247,9 @@ async function runIteration(ctx: LoopContext, state: LoopState): Promise<Iterati
   stopProvider();
 
   const changedFiles = gitChangedFiles(ctx.target, ctx.canAutoCommit);
-  const tasksAfterProvider = readProjectFile(ctx.target, "TASKS.md");
   const afterExists = baselineFileExistence(ctx.target, currentTask.files);
   const staticResult = staticGuard({
     prd: prdBefore,
-    tasksBefore,
-    tasksAfter: tasksAfterProvider,
     currentTask,
     changedFiles,
     beforeExists,
@@ -288,12 +295,14 @@ async function runIteration(ctx: LoopContext, state: LoopState): Promise<Iterati
   updateRunnerBlock(join(ctx.target, "STATUS.md"), summary);
 
   if (updateTaskAfterVerification(ctx.target, currentTask, code)) {
+    updateNextStepFromTasks(ctx.target);
     const committed = await autoCommit(ctx.target, state.loop, ctx.canAutoCommit);
     if (committed) {
       const reviewPassed = await runAutoReviewFeedback(
         ctx.provider,
         ctx.target,
         state.loop,
+        currentTask,
         lastCommitReviewScope(ctx.target),
         process.env.RALPH_MODEL
       );

@@ -232,7 +232,7 @@ async function main() {
     const ralphDir = join(target, ".ralph");
     const reinit = existsSync(ralphDir);
     rmSync(ralphDir, { recursive: true, force: true });
-    ensureTemplates(target);
+    ensureTemplates(target, { resetStatus: true });
     console.log(
       `${reinit ? "Reinitialized" : "Initialized"} Ralph files in ${target}`
     );

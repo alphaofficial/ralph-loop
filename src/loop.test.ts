@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { handleStaticGuardFailure, makePrompt, updateTaskAfterVerification } from "./loop";
+import { makeAutoReviewFeedbackPrompt } from "./prompts";
 import { getTask } from "./task-state";
 
 describe("makePrompt", () => {
@@ -41,8 +42,51 @@ describe("makePrompt", () => {
       );
       expect(prompt).toContain("Ralph has already selected the current task. Do not choose a task from TASKS.md.");
       expect(prompt).toContain("Do not edit TASKS.md. The Ralph runner owns checking and unchecking the selected task.");
+      expect(prompt).not.toContain("<TASKS>");
+      expect(prompt).not.toContain("Completed task.");
       expect(prompt).not.toContain("Pick the FIRST unchecked task");
       expect(prompt).not.toContain("Check off that one task");
+    } finally {
+      rmSync(target, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("makeAutoReviewFeedbackPrompt", () => {
+  test("embeds full PRD and selected task without full TASKS.md or STATUS.md", () => {
+    const target = mkdtempSync(join(tmpdir(), "ralph-loop-test-"));
+    try {
+      const tasks = `- [x] Completed task.
+  - Files: src/done.ts M
+  - Expectation: Already done.
+  - Test Cases: done test.
+
+- [ ] Review the selected task only.
+  - Files: src/loop.ts M
+  - Expectation: Review prompt uses the selected task and commit diff.
+  - Test Cases: Review prompt excludes full TASKS.md and STATUS.md.
+`;
+
+      writeFileSync(join(target, "PRD.md"), "# PRD\n\n## Requirements\n- Full PRD context.\n");
+      writeFileSync(join(target, "TASKS.md"), tasks);
+      writeFileSync(join(target, "STATUS.md"), "# Status\nStatus-only context.\n");
+
+      const currentTask = getTask(tasks);
+      if (!currentTask) throw new Error("Expected current task");
+
+      const prompt = makeAutoReviewFeedbackPrompt(target, 3, currentTask, {
+        touchedFiles: ["src/loop.ts"],
+        diff: "diff --git a/src/loop.ts b/src/loop.ts",
+      });
+
+      expect(prompt).toContain("# PRD");
+      expect(prompt).toContain("Full PRD context.");
+      expect(prompt).toContain("Description: Review the selected task only.");
+      expect(prompt).toContain("diff --git a/src/loop.ts b/src/loop.ts");
+      expect(prompt).not.toContain("<TASKS>");
+      expect(prompt).not.toContain("Completed task.");
+      expect(prompt).not.toContain("<STATUS>");
+      expect(prompt).not.toContain("Status-only context.");
     } finally {
       rmSync(target, { recursive: true, force: true });
     }
@@ -69,13 +113,13 @@ describe("runner-owned task state", () => {
       const summary = handleStaticGuardFailure(
         target,
         currentTask,
-        "Static guard: FAIL\n- TASKS.md changed during provider execution; the Ralph runner owns task state.\n"
+        "Static guard: FAIL\n- src/outside.ts changed but is not listed in the selected task Files: line.\n"
       );
 
       expect(summary).toContain("Static guard: FAIL");
       expect(readFileSync(join(target, "TASKS.md"), "utf-8")).toBe(tasksBefore);
       expect(readFileSync(join(target, "STATUS.md"), "utf-8")).toContain(
-        "TASKS.md changed during provider execution; the Ralph runner owns task state."
+        "src/outside.ts changed but is not listed in the selected task Files: line."
       );
     } finally {
       rmSync(target, { recursive: true, force: true });

@@ -121,13 +121,46 @@ describe("staticGuard", () => {
     expect(result).toEqual({ passed: true, failures: [] });
   });
 
-  test("fails when PRD.md or TASKS.md changes during provider execution", () => {
+  test("passes for Files N/A tasks when no implementation files changed", () => {
+    const result = staticGuard({
+      prd,
+      currentTask: {
+        ...currentTask,
+        files: [],
+        expectation: "The configured verification command passes without code changes.",
+        testCases: ["Run the configured verification command."],
+      },
+      changedFiles: ["STATUS.md", ".ralph/check-output.txt"],
+      beforeExists: new Map(),
+      afterExists: new Map(),
+    });
+
+    expect(result).toEqual({ passed: true, failures: [] });
+  });
+
+  test("fails for Files N/A tasks when implementation files changed", () => {
+    const result = staticGuard({
+      prd,
+      currentTask: {
+        ...currentTask,
+        files: [],
+        expectation: "The configured verification command passes without code changes.",
+        testCases: ["Run the configured verification command."],
+      },
+      changedFiles: ["src/spec-guard.ts"],
+      beforeExists: new Map(),
+      afterExists: new Map(),
+    });
+
+    expect(result.passed).toBe(false);
+    expect(result.failures).toContain("src/spec-guard.ts changed but is not listed in the selected task Files: line.");
+  });
+
+  test("fails when PRD.md or TASKS.md appears in the git diff", () => {
     const result = staticGuard({
       prd,
       currentTask,
       changedFiles: ["PRD.md", "TASKS.md"],
-      tasksBefore: "- [ ] Selected task.\n",
-      tasksAfter: "- [x] Selected task.\n",
       beforeExists: new Map([
         ["src/spec-guard.ts", true],
         ["src/spec-guard.test.ts", false],
@@ -141,7 +174,23 @@ describe("staticGuard", () => {
     expect(result.passed).toBe(false);
     expect(result.failures).toContain("PRD.md was modified during an implementation iteration.");
     expect(result.failures).toContain("TASKS.md was modified during provider execution; the Ralph runner owns task state.");
-    expect(result.failures).toContain("TASKS.md changed during provider execution; the Ralph runner owns task state.");
+  });
+
+  test("does not compare ignored TASKS.md snapshots outside the git diff", () => {
+    const result = staticGuard({
+      prd,
+      currentTask: {
+        ...currentTask,
+        files: [{ path: "src/spec-guard.ts", op: "M" }],
+      },
+      changedFiles: ["src/spec-guard.ts"],
+      tasksBefore: "- [ ] Selected task.\n",
+      tasksAfter: "- [x] Selected task.\n",
+      beforeExists: new Map([["src/spec-guard.ts", true]]),
+      afterExists: new Map([["src/spec-guard.ts", true]]),
+    });
+
+    expect(result).toEqual({ passed: true, failures: [] });
   });
 });
 
