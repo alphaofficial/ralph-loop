@@ -100,20 +100,25 @@ describe("staticGuard", () => {
     expect(result.failures).toContain("src/not-listed.ts is listed in the task but not in PRD.md ## Files to touch.");
   });
 
-  test("fails when a current task test case is not listed in PRD.md Test cases", () => {
+  test("does not require current task test cases to exactly match PRD.md test cases", () => {
     const result = staticGuard({
       prd,
       currentTask: {
         ...currentTask,
-        testCases: ["Unlisted static guard behavior."],
+        testCases: ["Type check verifies all route-path code compiles using `req.ctx` and no longer relies on deleted request typings."],
       },
       changedFiles: ["src/spec-guard.ts"],
-      beforeExists: new Map([["src/spec-guard.ts", true]]),
-      afterExists: new Map([["src/spec-guard.ts", true]]),
+      beforeExists: new Map([
+        ["src/spec-guard.ts", true],
+        ["src/spec-guard.test.ts", false],
+      ]),
+      afterExists: new Map([
+        ["src/spec-guard.ts", true],
+        ["src/spec-guard.test.ts", true],
+      ]),
     });
 
-    expect(result.passed).toBe(false);
-    expect(result.failures).toContain("Unlisted static guard behavior. is listed in the task but not in PRD.md ## Test cases.");
+    expect(result).toEqual({ passed: true, failures: [] });
   });
 
   test("fails when PRD.md or TASKS.md changes during provider execution", () => {

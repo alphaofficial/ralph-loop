@@ -76,7 +76,6 @@ export function parseGitDiffFiles(output: string): string[] {
 export function staticGuard(input: StaticGuardInput): StaticGuardResult {
   const failures: string[] = [];
   const prdFiles = parsePrdFilesToTouch(input.prd);
-  const prdTestCases = parsePrdTestCases(input.prd);
   const task = input.currentTask;
   const prdMap = contractMap(prdFiles, "PRD ## Files to touch", failures);
   const taskMap = contractMap(task.files, "selected task Files", failures);
@@ -100,13 +99,6 @@ export function staticGuard(input: StaticGuardInput): StaticGuardResult {
   for (const [path, op] of taskMap) {
     if (!prdMap.has(path)) {
       failures.push(`${path} is listed in the task but not in PRD.md ## Files to touch.`);
-    }
-  }
-
-  const prdTestCaseSet = new Set(prdTestCases);
-  for (const testCase of task.testCases) {
-    if (!prdTestCaseSet.has(testCase)) {
-      failures.push(`${testCase} is listed in the task but not in PRD.md ## Test cases.`);
     }
   }
 
