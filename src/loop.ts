@@ -54,7 +54,8 @@ Rules:
 - The selected task must include Files:, Expectation:, and Test Cases: lines.
 - Before editing, identify the PRD sections and selected task contract lines that authorize the work.
 - Implement that single task only.
-- Touch only implementation files listed in the selected task's Files: line, plus Ralph operational files: STATUS.md and .ralph/*.
+- Touch only implementation files listed in the selected task's Files
+- Touch operation ralph files like STATUS.md and .ralph/ files as needed, but do not touch PRD.md or TASKS.md. These files are not tracked by git so its very important to not touch them unless you are updating STATUS.md with what you changed and what the next task should be.
 - Every implementation file in the selected task's Files: line must also appear in PRD.md ## Files to touch with the same C/M/D marker.
 - Do not modify PRD.md during implementation.
 - Do not reinterpret, simplify, or expand the spec.
