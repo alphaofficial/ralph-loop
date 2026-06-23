@@ -1,16 +1,99 @@
 import { join } from "node:path";
 import { writeFileSync, readFileSync } from "node:fs";
 import { log, err, startSpinner, formatDuration } from "./ui";
-import {
-  ensureTemplates,
-  updateRunnerBlock,
-} from "./files";
+import { ensureTemplates, readProjectFile, updateRunnerBlock } from "./files";
 import { invokeProvider, type Provider } from "./providers";
+import {
+  baselineFileExistence,
+  parseFirstUncheckedTask,
+  parseGitStatusFiles,
+  validateStaticGuard,
+  type FileContract,
+} from "./spec-guard";
 import {
   lastCommitReviewScope,
   runAutoReviewFeedback,
 } from "./review";
-import { makeLoopPrompt } from "./prompts";
+
+export function makePrompt(
+  target: string,
+  checkCmd: string,
+  loopNo: number,
+  lastFailedOutput = "",
+  checkDisabled = false
+) {
+  const prd = readProjectFile(target, "PRD.md");
+  const tasks = readProjectFile(target, "TASKS.md");
+  const status = readProjectFile(target, "STATUS.md");
+
+  let content = `You are running one iteration of a Ralph loop inside this project.
+
+The project planning files are embedded below. Use these embedded copies instead of reading PRD.md, TASKS.md, or STATUS.md via tool calls.
+
+<PRD>
+${prd}
+</PRD>
+
+<TASKS>
+${tasks}
+</TASKS>
+
+<STATUS>
+${status}
+</STATUS>
+
+CRITICAL: You must complete exactly ONE unchecked task from TASKS.md, then stop.
+Do NOT attempt multiple tasks. Another fresh instance will handle the next task.
+
+PRD.md is the source-of-truth implementation contract. Implement only what PRD.md and the selected task explicitly specify. Do not invent product behavior, architecture, files, dependencies, abstractions, or tests. Use code inspection only to locate the specified implementation points and follow existing style.
+
+Rules:
+- Pick the FIRST unchecked task (- [ ]) from TASKS.md.
+- The selected task must include Files:, Expectation:, and Test Cases: lines.
+- Before editing, identify the PRD sections and selected task contract lines that authorize the work.
+- Implement that single task only.
+- Touch only implementation files listed in the selected task's Files: line, plus Ralph operational files: TASKS.md, STATUS.md, and .ralph/*.
+- Every implementation file in the selected task's Files: line must also appear in PRD.md ## Files to touch with the same C/M/D marker.
+- Do not modify PRD.md during implementation.
+- Do not reinterpret, simplify, or expand the spec.
+- If an unlisted file or unspecified behavior appears necessary, do not implement it. Update STATUS.md with the spec gap and leave the task unchecked.
+- Implement only the checks listed in the selected task's Test Cases: line, except for direct equivalents required by the target project's test framework.
+- Check off that one task (- [x]) in TASKS.md.
+- Update STATUS.md with what you changed and what the next task should be.
+- Keep STATUS.md concrete, short, and truthful.
+- Do not add rationale or departure sections to STATUS.md. PRD.md is authoritative. If the spec blocks implementation, record the blocking spec gap under Known issues and leave the task unchecked.
+- Do not touch other unchecked tasks.
+- If you encounter any code or test issues, fix them and update STATUS.md with what you did to fix them.
+- Do not add tests which simply restate the implementation. These provide zero confidence. Avoid spurious tests.
+- Do not leave known issues unfixed before checking off the task.
+
+Iteration number: ${loopNo}
+Verification command after your run: ${checkDisabled ? "<disabled by --no-check>" : checkCmd || "<none auto-detected>"}
+
+Write a one-line commit message describing what you changed to .ralph/commit-msg.txt.
+Ensure you follow the project's existing commit message style. Use git log to see project commit messsage format and follow it strictly.
+
+IMPORTANT: ensure the generated commit message is concise, specific and no more than 48 charaters.
+
+IMPORTANT: NEVER run git write commands (git add, git commit, git push, git stash, git reset, git checkout, git revert). Only git read commands are permitted (git log, git diff, git show, git status, git blame). The ralph runner handles all commits automatically.
+
+If you need to leave notes for the next fresh instance, put them in STATUS.md.
+
+IMPORTANT: Do not mark the task complete while any tests are failing. All tests must pass first, even if the failures look unrelated or pre-existing.
+`;
+
+  if (lastFailedOutput.trim()) {
+    content += `
+Your previous attempt FAILED verification. Here is the raw output:
+
+${lastFailedOutput.trimEnd()}
+
+Fix the issue before proceeding.
+`;
+  }
+
+  return content;
+}
 
 export const SKIP = Symbol("skip");
 
@@ -183,6 +266,31 @@ function uncheckTask(target: string, task: TaskSnapshot | null): boolean {
   return false;
 }
 
+function gitChangedFiles(target: string, canInspect = isGitRepo(target)): string[] {
+  if (!canInspect) return [];
+  const proc = Bun.spawnSync(["git", "-C", target, "status", "--porcelain=v1", "-z", "--untracked-files=all"], {
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  if (proc.exitCode !== 0) return [];
+  return parseGitStatusFiles(new TextDecoder().decode(proc.stdout));
+}
+
+function taskFilesForBaseline(tasks: string): FileContract[] {
+  try {
+    return parseFirstUncheckedTask(tasks)?.files ?? [];
+  } catch {
+    return [];
+  }
+}
+
+function staticGuardSummary(failures: readonly string[]): string {
+  if (failures.length === 0) return "Static guard: PASS\n";
+  return `Static guard: FAIL
+${failures.map((failure) => `- ${failure}`).join("\n")}
+`;
+}
+
 type LoopContext = {
   provider: Provider;
   target: string;
@@ -196,9 +304,10 @@ type LoopContext = {
 type LoopState = {
   loop: number;
   consecutiveFailures: number;
+  lastFailedOutput: string;
 };
 
-type IterationResult = { completed: boolean };
+type IterationResult = { completed: boolean; lastFailedOutput?: string };
 
 async function runIteration(ctx: LoopContext, state: LoopState): Promise<IterationResult> {
   const iterationStart = Date.now();
@@ -206,7 +315,10 @@ async function runIteration(ctx: LoopContext, state: LoopState): Promise<Iterati
   log(`loop ${state.loop} (${ctx.provider}) · total ${total}${state.consecutiveFailures > 0 ? ` · failure ${state.consecutiveFailures}/${ctx.maxLoops}` : ""}`);
 
   const taskForFailureRecovery = firstUncheckedTask(ctx.target);
-  const prompt = makeLoopPrompt(ctx.target, ctx.checkCmd, state.loop, ctx.checkDisabled);
+  const prdBefore = readProjectFile(ctx.target, "PRD.md");
+  const tasksBefore = readProjectFile(ctx.target, "TASKS.md");
+  const beforeExists = baselineFileExistence(ctx.target, taskFilesForBaseline(tasksBefore));
+  const prompt = makePrompt(ctx.target, ctx.checkCmd, state.loop, state.lastFailedOutput, ctx.checkDisabled);
 
   const stopProvider = startSpinner(`🌀 ${ctx.provider} is working · loop ${state.loop}`);
   try {
@@ -216,6 +328,26 @@ async function runIteration(ctx: LoopContext, state: LoopState): Promise<Iterati
     err(`failed to run ${ctx.provider}: ${e instanceof Error ? e.message : e}`);
   }
   stopProvider();
+
+  const changedFiles = gitChangedFiles(ctx.target, ctx.canAutoCommit);
+  const afterExists = baselineFileExistence(ctx.target, taskFilesForBaseline(tasksBefore));
+  const staticResult = validateStaticGuard({
+    prd: prdBefore,
+    tasks: tasksBefore,
+    changedFiles,
+    beforeExists,
+    afterExists,
+  });
+  const staticSummary = staticGuardSummary(staticResult.failures);
+  const staticOut = join(ctx.target, ".ralph", "static-guard-summary.txt");
+  writeFileSync(staticOut, staticSummary, { mode: 0o600 });
+
+  if (!staticResult.passed) {
+    const iterTime = formatDuration(Date.now() - iterationStart);
+    updateRunnerBlock(join(ctx.target, "STATUS.md"), staticSummary);
+    log(`⚠️ static guard failed · ${iterTime}`);
+    return { completed: false, lastFailedOutput: staticSummary };
+  }
 
   const summaryFile = join(ctx.target, ".ralph", "check-summary.txt");
   const checkOut = join(ctx.target, ".ralph", "check-output.txt");
@@ -277,7 +409,7 @@ export async function mainLoop(
 
   if (dryRun) {
     log("dry run, not invoking " + provider);
-    console.log(makeLoopPrompt(target, checkCmd, 1, checkDisabled));
+    console.log(makePrompt(target, checkCmd, 1, "", checkDisabled));
     return 0;
   }
 
@@ -290,17 +422,19 @@ export async function mainLoop(
     canAutoCommit: isGitRepo(target),
     loopStart: Date.now(),
   };
-  const state: LoopState = { loop: 0, consecutiveFailures: 0 };
+  const state: LoopState = { loop: 0, consecutiveFailures: 0, lastFailedOutput: "" };
 
   while (!allTasksComplete(ctx.target)) {
     state.loop++;
     const result = await runIteration(ctx, state);
     if (result.completed) {
       state.consecutiveFailures = 0;
+      state.lastFailedOutput = "";
       continue;
     }
 
     state.consecutiveFailures++;
+    state.lastFailedOutput = result.lastFailedOutput ?? "";
     if (allTasksComplete(ctx.target)) {
       err("iteration failed but no unchecked tasks remain");
       return 1;

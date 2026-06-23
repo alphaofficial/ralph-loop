@@ -6,10 +6,25 @@ Describe what done looks like.
 - requirement 2
 - requirement 3
 
-## Technical requirements
-- interfaces/APIs/CLI flags/file formats/events/data contracts impacted
-- affected modules or systems
-- high-level implementation approach and relevant integration/migration/compatibility/security/performance constraints
+## Implementation details
+- exact implementation approach
+- affected modules, interfaces, APIs, CLI flags, file formats, events, and data contracts
+- file-level responsibilities
+- error handling, integration, migration, compatibility, security, and performance requirements
+
+## Files to touch
+- src/
+  - example.ts M
+  - new-file.ts C
+- README.md M
+
+## Test cases
+- required test or verification check 1
+- required test or verification check 2
+
+## Guardrails
+- do not invent product behavior, architecture, files, dependencies, abstractions, or tests.
+- do not write spurious tests.
 
 ## Constraints
 - constraint 1
@@ -20,10 +35,15 @@ Describe what done looks like.
 - behavior is implemented
 `;
 
-export const TASKS_TEMPLATE = `- [ ] inspect the existing code and relevant files
-- [ ] implement the next highest-value change
-- [ ] verify the result
-- [ ] update STATUS.md with what changed and what remains
+export const TASKS_TEMPLATE = `- [ ] Update the documented behavior for the first specified change.
+  - Files: README.md M
+  - Expectation: README.md documents the behavior exactly as described in PRD.md.
+  - Test Cases: Verify README.md matches the PRD requirements, verify no unlisted files changed
+
+- [ ] Implement the first specified change.
+  - Files: src/example.ts M, src/new-file.ts C
+  - Expectation: The specified behavior is implemented exactly as described in PRD.md.
+  - Test Cases: Run the listed project verification for this change
 `;
 
 export const STATUS_TEMPLATE = `# Current status
@@ -31,12 +51,6 @@ Not started.
 
 # Last attempt
 N/A
-
-# Decisions made
-None yet.
-
-# Tradeoffs and deviations
-None yet.
 
 # Known issues
 None yet.
