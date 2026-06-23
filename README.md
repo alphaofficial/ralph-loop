@@ -76,10 +76,12 @@ ralph opencode ~/code/my-app
 ## How it works
 ```
 while (unchecked tasks in TASKS.md) {
+  Ralph selects the first unchecked task
   spawn fresh AI agent
-  agent picks ONE unchecked task, implements it, checks it off
-  hard-fail if changed files exceed the PRD/task file contract
+  agent implements the selected task without editing TASKS.md
+  hard-fail if changed files exceed the PRD/selected-task file contract
   run verification command
+  Ralph checks the selected task after guard and verification pass
   write result to STATUS.md
   run auto review gate
   write review JSON to STATUS.md for the next iteration
@@ -90,7 +92,7 @@ Each iteration gets a fresh context — no memory of previous runs. Progress is 
 
 Ralph selects the first unchecked task in `TASKS.md`, passes that current task to the provider, and owns task checkbox state: providers must not edit `TASKS.md`; Ralph checks the selected task only after static guard and verification pass and unchecks it on guard failure.
 
-`PRD.md` is the source-of-truth implementation contract. `TASKS.md` slices that contract into one iteration at a time. Ralph fails an iteration before verification or auto-commit if implementation files changed outside the runner-selected task's `Files:` line, if that task file list is outside `PRD.md`'s `## Files to touch` tree, or if `PRD.md` is modified during implementation.
+`PRD.md` is the source-of-truth implementation contract. `TASKS.md` slices that contract into one iteration at a time. The static guard validates provider changes against the runner-selected current task and `PRD.md`. Ralph fails an iteration before verification or auto-commit if implementation files changed outside the selected task's `Files:` line, if that task file list is outside `PRD.md`'s `## Files to touch` tree, if task test cases are not listed in `PRD.md`, if `TASKS.md` changes during provider execution, or if `PRD.md` is modified during implementation.
 
 Auto-review runs once after each committed iteration. If the reviewer exits unsuccessfully or returns empty output, Ralph reverts the commit and records unavailable review feedback in `STATUS.md`. Otherwise, Ralph records the reviewer output in `STATUS.md` so the next normal iteration can address it.
 
