@@ -14,11 +14,13 @@ import {
   lastCommitReviewScope,
   runAutoReviewFeedback,
 } from "./review";
+import { getTask, type CurrentTask } from "./task-state";
 
 export function makePrompt(
   target: string,
   checkCmd: string,
   loopNo: number,
+  currentTask: CurrentTask | null,
   lastFailedOutput = "",
   checkDisabled = false
 ) {
@@ -42,23 +44,25 @@ ${tasks}
 ${status}
 </STATUS>
 
-CRITICAL: You must complete exactly ONE unchecked task from TASKS.md, then stop.
+${formatCurrentTask(currentTask)}
+
+CRITICAL: You must complete exactly ONE Ralph-selected current task, then stop.
 Do NOT attempt multiple tasks. Another fresh instance will handle the next task.
 
 PRD.md is the source-of-truth implementation contract. Implement only what PRD.md and the selected task explicitly specify. Do not invent product behavior, architecture, files, dependencies, abstractions, or tests. Use code inspection only to locate the specified implementation points and follow existing style.
 
 Rules:
-- Pick the FIRST unchecked task (- [ ]) from TASKS.md.
+- Ralph has already selected the current task. Do not choose a task from TASKS.md.
 - The selected task must include Files:, Expectation:, and Test Cases: lines.
 - Before editing, identify the PRD sections and selected task contract lines that authorize the work.
 - Implement that single task only.
-- Touch only implementation files listed in the selected task's Files: line, plus Ralph operational files: TASKS.md, STATUS.md, and .ralph/*.
+- Touch only implementation files listed in the selected task's Files: line, plus Ralph operational files: STATUS.md and .ralph/*.
 - Every implementation file in the selected task's Files: line must also appear in PRD.md ## Files to touch with the same C/M/D marker.
 - Do not modify PRD.md during implementation.
 - Do not reinterpret, simplify, or expand the spec.
 - If an unlisted file or unspecified behavior appears necessary, do not implement it. Update STATUS.md with the spec gap and leave the task unchecked.
 - Implement only the checks listed in the selected task's Test Cases: line, except for direct equivalents required by the target project's test framework.
-- Check off that one task (- [x]) in TASKS.md.
+- Do not edit TASKS.md. The Ralph runner owns checking and unchecking the selected task.
 - Update STATUS.md with what you changed and what the next task should be.
 - Keep STATUS.md concrete, short, and truthful.
 - Do not add rationale or departure sections to STATUS.md. PRD.md is authoritative. If the spec blocks implementation, record the blocking spec gap under Known issues and leave the task unchecked.
@@ -93,6 +97,23 @@ Fix the issue before proceeding.
   }
 
   return content;
+}
+
+function formatCurrentTask(currentTask: CurrentTask | null): string {
+  if (!currentTask) {
+    return `<CURRENT_TASK>
+None selected.
+</CURRENT_TASK>`;
+  }
+
+  return `<CURRENT_TASK>
+Description: ${currentTask.description}
+Files:
+${currentTask.files.map((file) => `- ${file.path} ${file.op}`).join("\n")}
+Expectation: ${currentTask.expectation}
+Test Cases:
+${currentTask.testCases.map((testCase) => `- ${testCase}`).join("\n")}
+</CURRENT_TASK>`;
 }
 
 export const SKIP = Symbol("skip");
@@ -317,8 +338,9 @@ async function runIteration(ctx: LoopContext, state: LoopState): Promise<Iterati
   const taskForFailureRecovery = firstUncheckedTask(ctx.target);
   const prdBefore = readProjectFile(ctx.target, "PRD.md");
   const tasksBefore = readProjectFile(ctx.target, "TASKS.md");
+  const currentTask = getTask(tasksBefore);
   const beforeExists = baselineFileExistence(ctx.target, taskFilesForBaseline(tasksBefore));
-  const prompt = makePrompt(ctx.target, ctx.checkCmd, state.loop, state.lastFailedOutput, ctx.checkDisabled);
+  const prompt = makePrompt(ctx.target, ctx.checkCmd, state.loop, currentTask, state.lastFailedOutput, ctx.checkDisabled);
 
   const stopProvider = startSpinner(`🌀 ${ctx.provider} is working · loop ${state.loop}`);
   try {
@@ -409,7 +431,8 @@ export async function mainLoop(
 
   if (dryRun) {
     log("dry run, not invoking " + provider);
-    console.log(makePrompt(target, checkCmd, 1, "", checkDisabled));
+    const currentTask = getTask(readProjectFile(target, "TASKS.md"));
+    console.log(makePrompt(target, checkCmd, 1, currentTask, "", checkDisabled));
     return 0;
   }
 
