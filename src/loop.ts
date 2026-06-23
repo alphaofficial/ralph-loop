@@ -13,107 +13,9 @@ import {
   runAutoReviewFeedback,
 } from "./review";
 import { checkTask, getTask, uncheckTask as uncheckSelectedTask, type CurrentTask } from "./task-state";
+import { makeLoopPrompt } from "./prompts";
 
-export function makePrompt(
-  target: string,
-  checkCmd: string,
-  loopNo: number,
-  currentTask: CurrentTask | null,
-  lastFailedOutput = "",
-  checkDisabled = false
-) {
-  const prd = readProjectFile(target, "PRD.md");
-  const tasks = readProjectFile(target, "TASKS.md");
-  const status = readProjectFile(target, "STATUS.md");
-
-  let content = `You are running one iteration of a Ralph loop inside this project.
-
-The project planning files are embedded below. Use these embedded copies instead of reading PRD.md, TASKS.md, or STATUS.md via tool calls.
-
-<PRD>
-${prd}
-</PRD>
-
-<TASKS>
-${tasks}
-</TASKS>
-
-<STATUS>
-${status}
-</STATUS>
-
-${formatCurrentTask(currentTask)}
-
-CRITICAL: You must complete exactly ONE Ralph-selected current task, then stop.
-Do NOT attempt multiple tasks. Another fresh instance will handle the next task.
-
-PRD.md is the source-of-truth implementation contract. Implement only what PRD.md and the selected task explicitly specify. Do not invent product behavior, architecture, files, dependencies, abstractions, or tests. Use code inspection only to locate the specified implementation points and follow existing style.
-
-Rules:
-- Ralph has already selected the current task. Do not choose a task from TASKS.md.
-- The selected task must include Files:, Expectation:, and Test Cases: lines.
-- Before editing, identify the PRD sections and selected task contract lines that authorize the work.
-- Implement that single task only.
-- Touch only implementation files listed in the selected task's Files
-- Touch operation ralph files like STATUS.md and .ralph/ files as needed, but do not touch PRD.md or TASKS.md. These files are not tracked by git so its very important to not touch them unless you are updating STATUS.md with what you changed and what the next task should be.
-- Every implementation file in the selected task's Files: line must also appear in PRD.md ## Files to touch with the same C/M/D marker.
-- Do not modify PRD.md during implementation.
-- Do not reinterpret, simplify, or expand the spec.
-- If an unlisted file or unspecified behavior appears necessary, do not implement it. Update STATUS.md with the spec gap and leave the task unchecked.
-- Implement only the checks listed in the selected task's Test Cases: line, except for direct equivalents required by the target project's test framework.
-- Do not edit TASKS.md. The Ralph runner owns checking and unchecking the selected task.
-- Update STATUS.md with what you changed and what the next task should be.
-- Keep STATUS.md concrete, short, and truthful.
-- Do not add rationale or departure sections to STATUS.md. PRD.md is authoritative. If the spec blocks implementation, record the blocking spec gap under Known issues and leave the task unchecked.
-- Do not touch other unchecked tasks.
-- If you encounter any code or test issues, fix them and update STATUS.md with what you did to fix them.
-- Do not add tests which simply restate the implementation. These provide zero confidence. Avoid spurious tests.
-- Do not leave known issues unfixed before checking off the task.
-
-Iteration number: ${loopNo}
-Verification command after your run: ${checkDisabled ? "<disabled by --no-check>" : checkCmd || "<none auto-detected>"}
-
-Write a one-line commit message describing what you changed to .ralph/commit-msg.txt.
-Ensure you follow the project's existing commit message style. Use git log to see project commit messsage format and follow it strictly.
-
-IMPORTANT: ensure the generated commit message is concise, specific and no more than 48 charaters.
-
-IMPORTANT: NEVER run git write commands (git add, git commit, git push, git stash, git reset, git checkout, git revert). Only git read commands are permitted (git log, git diff, git show, git status, git blame). The ralph runner handles all commits automatically.
-
-If you need to leave notes for the next fresh instance, put them in STATUS.md.
-
-IMPORTANT: Do not mark the task complete while any tests are failing. All tests must pass first, even if the failures look unrelated or pre-existing.
-`;
-
-  if (lastFailedOutput.trim()) {
-    content += `
-Your previous attempt FAILED verification. Here is the raw output:
-
-${lastFailedOutput.trimEnd()}
-
-Fix the issue before proceeding.
-`;
-  }
-
-  return content;
-}
-
-function formatCurrentTask(currentTask: CurrentTask | null): string {
-  if (!currentTask) {
-    return `<CURRENT_TASK>
-None selected.
-</CURRENT_TASK>`;
-  }
-
-  return `<CURRENT_TASK>
-Description: ${currentTask.description}
-Files:
-${currentTask.files.map((file) => `- ${file.path} ${file.op}`).join("\n")}
-Expectation: ${currentTask.expectation}
-Test Cases:
-${currentTask.testCases.map((testCase) => `- ${testCase}`).join("\n")}
-</CURRENT_TASK>`;
-}
+export const makePrompt = makeLoopPrompt;
 
 export const SKIP = Symbol("skip");
 
@@ -364,7 +266,7 @@ async function runIteration(ctx: LoopContext, state: LoopState): Promise<Iterati
   if (!currentTask) return { completed: true };
   const beforeExists = baselineFileExistence(ctx.target, currentTask.files);
 
-  const prompt = makePrompt(ctx.target, ctx.checkCmd, state.loop, currentTask, state.lastFailedOutput, ctx.checkDisabled);
+  const prompt = makeLoopPrompt(ctx.target, ctx.checkCmd, state.loop, currentTask, state.lastFailedOutput, ctx.checkDisabled);
 
   const stopProvider = startSpinner(`🌀 ${ctx.provider} is working · loop ${state.loop}`);
   try {
@@ -436,7 +338,12 @@ async function runIteration(ctx: LoopContext, state: LoopState): Promise<Iterati
         lastCommitReviewScope(ctx.target),
         process.env.RALPH_MODEL
       );
-      if (!reviewPassed) return { completed: false };
+      if (!reviewPassed) {
+        if (uncheckTask(ctx.target, taskForFailureRecovery)) {
+          log("reopened task after failed auto review");
+        }
+        return { completed: false };
+      }
     }
     return { completed: true };
   }
@@ -460,7 +367,7 @@ export async function mainLoop(
   if (dryRun) {
     log("dry run, not invoking " + provider);
     const currentTask = getTask(readProjectFile(target, "TASKS.md"));
-    console.log(makePrompt(target, checkCmd, 1, currentTask, "", checkDisabled));
+    console.log(makeLoopPrompt(target, checkCmd, 1, currentTask, "", checkDisabled));
     return 0;
   }
 
