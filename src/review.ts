@@ -7,6 +7,17 @@ import {
 } from "./prompts";
 import { err, log, startSpinner } from "./ui";
 
+/** Runs auto review after commit step.
+ * The auto review will run the provider with the last commit's diff and touched files.
+ * If the auto review fails, it will revert the last commit and write the failure reason to STATUS.md.
+ * If the auto review passes, it will write the feedback to STATUS.md.
+ * @param provider The provider to use for auto review.
+ * @param target The target directory of the project.
+ * @param loop The current loop number.
+ * @param scope The review scope containing the diff and touched files.
+ * @param model Optional model to use for the provider.
+ * @returns A promise that resolves to true if the auto review passed, false otherwise.
+ */
 export async function runAutoReviewFeedback(
   provider: Provider,
   target: string,
