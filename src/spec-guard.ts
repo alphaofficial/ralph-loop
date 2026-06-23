@@ -17,10 +17,6 @@ export type StaticGuardInput = {
   prd: string;
   currentTask: CurrentTask;
   changedFiles: string[];
-  tasksBefore?: string;
-  tasksAfter?: string;
-  beforeExists?: Map<string, boolean>;
-  afterExists?: Map<string, boolean>;
 };
 
 type LegacyStaticGuardInput = {
