@@ -4,6 +4,7 @@ import { log, err, startSpinner, formatDuration } from "./ui";
 import { ensureTemplates, readProjectFile, updateRunnerBlock } from "./files";
 import { invokeProvider, type Provider } from "./providers";
 import {
+  baselineFileExistence,
   parseGitDiffFiles,
   staticGuard,
 } from "./spec-guard";
@@ -11,7 +12,7 @@ import {
   lastCommitReviewScope,
   runAutoReviewFeedback,
 } from "./review";
-import { getTask, type CurrentTask } from "./task-state";
+import { checkTask, getTask, uncheckTask as uncheckSelectedTask, type CurrentTask } from "./task-state";
 
 export function makePrompt(
   target: string,
@@ -115,6 +116,38 @@ ${currentTask.testCases.map((testCase) => `- ${testCase}`).join("\n")}
 
 export const SKIP = Symbol("skip");
 
+export function handleStaticGuardFailure(
+  target: string,
+  currentTask: CurrentTask,
+  staticSummary: string
+): string {
+  let summary = staticSummary;
+  try {
+    const tasksPath = join(target, "TASKS.md");
+    const latestTasks = readFileSync(tasksPath, "utf-8");
+    writeFileSync(tasksPath, uncheckSelectedTask(latestTasks, currentTask));
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    summary += `${summary.endsWith("\n") ? "" : "\n"}Task rollback failed: ${message}\n`;
+  }
+
+  updateRunnerBlock(join(target, "STATUS.md"), summary);
+  return summary;
+}
+
+export function updateTaskAfterVerification(
+  target: string,
+  currentTask: CurrentTask,
+  code: number | typeof SKIP
+): boolean {
+  if (code !== 0 && code !== SKIP) return false;
+
+  const tasksPath = join(target, "TASKS.md");
+  const latestTasks = readFileSync(tasksPath, "utf-8");
+  writeFileSync(tasksPath, checkTask(latestTasks, currentTask));
+  return true;
+}
+
 function commandOutput(proc: { stdout?: Uint8Array; stderr?: Uint8Array }): string {
   const decoder = new TextDecoder();
   return [proc.stderr, proc.stdout]
@@ -156,14 +189,13 @@ export async function runCheck(
 }
 
 export function allTasksComplete(target: string): boolean {
+  let content: string;
   try {
-    const content = readFileSync(join(target, "TASKS.md"), "utf-8");
-    const tasks = content.split("\n").filter((line) => /^- \[[ x]\]/.test(line));
-    if (tasks.length === 0) return true;
-    return tasks.every((line) => line.startsWith("- [x]"));
+    content = readFileSync(join(target, "TASKS.md"), "utf-8");
   } catch {
     return true;
   }
+  return getTask(content) === null;
 }
 
 function isGitRepo(target: string): boolean {
@@ -329,6 +361,7 @@ async function runIteration(ctx: LoopContext, state: LoopState): Promise<Iterati
   const tasksBefore = readProjectFile(ctx.target, "TASKS.md");
   const currentTask = getTask(tasksBefore);
   if (!currentTask) return { completed: true };
+  const beforeExists = baselineFileExistence(ctx.target, currentTask.files);
 
   const prompt = makePrompt(ctx.target, ctx.checkCmd, state.loop, currentTask, state.lastFailedOutput, ctx.checkDisabled);
 
@@ -342,21 +375,28 @@ async function runIteration(ctx: LoopContext, state: LoopState): Promise<Iterati
   stopProvider();
 
   const changedFiles = gitChangedFiles(ctx.target, ctx.canAutoCommit);
+  const tasksAfterProvider = readProjectFile(ctx.target, "TASKS.md");
+  const afterExists = baselineFileExistence(ctx.target, currentTask.files);
   const staticResult = staticGuard({
     prd: prdBefore,
+    tasksBefore,
+    tasksAfter: tasksAfterProvider,
     currentTask,
     changedFiles,
+    beforeExists,
+    afterExists,
   });
   const staticSummary = staticGuardSummary(staticResult.failures);
   const staticOut = join(ctx.target, ".ralph", "static-guard-summary.txt");
-  writeFileSync(staticOut, staticSummary, { mode: 0o600 });
 
   if (!staticResult.passed) {
+    const staticSummaryWithRollbackNotes = handleStaticGuardFailure(ctx.target, currentTask, staticSummary);
+    writeFileSync(staticOut, staticSummaryWithRollbackNotes, { mode: 0o600 });
     const iterTime = formatDuration(Date.now() - iterationStart);
-    updateRunnerBlock(join(ctx.target, "STATUS.md"), staticSummary);
     log(`⚠️ static guard failed · ${iterTime}`);
-    return { completed: false, lastFailedOutput: staticSummary };
+    return { completed: false, lastFailedOutput: staticSummaryWithRollbackNotes };
   }
+  writeFileSync(staticOut, staticSummary, { mode: 0o600 });
 
   const summaryFile = join(ctx.target, ".ralph", "check-summary.txt");
   const checkOut = join(ctx.target, ".ralph", "check-output.txt");
@@ -385,7 +425,7 @@ async function runIteration(ctx: LoopContext, state: LoopState): Promise<Iterati
   writeFileSync(summaryFile, summary, { mode: 0o600 });
   updateRunnerBlock(join(ctx.target, "STATUS.md"), summary);
 
-  if (code === 0 || code === SKIP) {
+  if (updateTaskAfterVerification(ctx.target, currentTask, code)) {
     const committed = await autoCommit(ctx.target, state.loop, ctx.canAutoCommit);
     if (committed) {
       const reviewPassed = await runAutoReviewFeedback(
