@@ -65,9 +65,9 @@ ${clarifications}
    - [ ] Task description.
      - Files: path/to/file.ts M, path/to/new-file.ts C
      - Expectation: One concise completion expectation aligned to PRD.md.
-     - Test Cases: comma separated list of required test cases for this task that align to PRD.md ## Test cases.
+     - Test Cases: comma separated list of tests or verification checks for this task. Each entry should be derived from or traceable to PRD.md ## Test cases, but it may be narrower or more specific to the current iteration; it does not need to exactly match PRD test-case wording.
 
-   Break the work into small, focused tasks, one per iteration. Each task's Files entries must be a subset of PRD.md ## Files to touch. The task's Files line owns the per-iteration C/M/D markers, so a file listed as C in PRD.md may be listed as M by a later task that modifies it. Each task's Test Cases entries must come from PRD.md ## Test cases.
+   Break the work into small, focused tasks, one per iteration. Each task's Files entries must be a subset of PRD.md ## Files to touch. The task's Files line owns the per-iteration C/M/D markers, so a file listed as C in PRD.md may be listed as M by a later task that modifies it. Each task's Test Cases entries must map to the intent of PRD.md ## Test cases without requiring a 1:1 exact string match.
 
 3. STATUS.md — Initial status:
    # Current status
