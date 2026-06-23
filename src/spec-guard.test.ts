@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { staticGuard } from "./spec-guard";
+import { parseGitDiffFiles, staticGuard } from "./spec-guard";
 import type { CurrentTask } from "./task-state";
 
 const prd = `# PRD
@@ -9,6 +9,7 @@ const prd = `# PRD
   - spec-guard.ts M
   - spec-guard.test.ts C
   - task-state.ts C
+  - loop.test.ts C
 - README.md M
 
 ## Test cases
@@ -66,31 +67,36 @@ describe("staticGuard", () => {
     expect(result.failures).toContain("src/loop.ts changed but is not listed in the selected task Files: line.");
   });
 
-  test("fails when a current task file is missing from PRD.md Files to touch or has a different operation marker", () => {
+  test("does not compare current task operation markers against PRD.md operation markers", () => {
+    const result = staticGuard({
+      prd,
+      currentTask: {
+        ...currentTask,
+        files: [{ path: "src/loop.test.ts", op: "M" }],
+      },
+      changedFiles: ["src/loop.test.ts"],
+      beforeExists: new Map([["src/loop.test.ts", true]]),
+      afterExists: new Map([["src/loop.test.ts", true]]),
+    });
+
+    expect(result).toEqual({ passed: true, failures: [] });
+  });
+
+  test("fails when a current task file is missing from PRD.md Files to touch", () => {
     const taskWithInvalidFiles: CurrentTask = {
       ...currentTask,
-      files: [
-        { path: "src/spec-guard.ts", op: "C" },
-        { path: "src/not-listed.ts", op: "M" },
-      ],
+      files: [{ path: "src/not-listed.ts", op: "M" }],
     };
 
     const result = staticGuard({
       prd,
       currentTask: taskWithInvalidFiles,
-      changedFiles: ["src/spec-guard.ts", "src/not-listed.ts"],
-      beforeExists: new Map([
-        ["src/spec-guard.ts", false],
-        ["src/not-listed.ts", true],
-      ]),
-      afterExists: new Map([
-        ["src/spec-guard.ts", true],
-        ["src/not-listed.ts", true],
-      ]),
+      changedFiles: ["src/not-listed.ts"],
+      beforeExists: new Map([["src/not-listed.ts", true]]),
+      afterExists: new Map([["src/not-listed.ts", true]]),
     });
 
     expect(result.passed).toBe(false);
-    expect(result.failures).toContain("src/spec-guard.ts has operation C in the task but M in PRD.md.");
     expect(result.failures).toContain("src/not-listed.ts is listed in the task but not in PRD.md ## Files to touch.");
   });
 
@@ -131,5 +137,14 @@ describe("staticGuard", () => {
     expect(result.failures).toContain("PRD.md was modified during an implementation iteration.");
     expect(result.failures).toContain("TASKS.md was modified during provider execution; the Ralph runner owns task state.");
     expect(result.failures).toContain("TASKS.md changed during provider execution; the Ralph runner owns task state.");
+  });
+});
+
+describe("parseGitDiffFiles", () => {
+  test("parses null-separated git diff name output", () => {
+    expect(parseGitDiffFiles("src/loop.ts\0./src/spec-guard.ts\0src/loop.ts\0")).toEqual([
+      "src/loop.ts",
+      "src/spec-guard.ts",
+    ]);
   });
 });

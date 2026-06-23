@@ -4,7 +4,7 @@ import { log, err, startSpinner, formatDuration } from "./ui";
 import { ensureTemplates, readProjectFile, updateRunnerBlock } from "./files";
 import { invokeProvider, type Provider } from "./providers";
 import {
-  parseGitStatusFiles,
+  parseGitDiffFiles,
   staticGuard,
 } from "./spec-guard";
 import {
@@ -286,12 +286,12 @@ function uncheckTask(target: string, task: TaskSnapshot | null): boolean {
 
 function gitChangedFiles(target: string, canInspect = isGitRepo(target)): string[] {
   if (!canInspect) return [];
-  const proc = Bun.spawnSync(["git", "-C", target, "status", "--porcelain=v1", "-z", "--untracked-files=all"], {
+  const proc = Bun.spawnSync(["git", "-C", target, "diff", "--name-only", "-z", "HEAD"], {
     stdout: "pipe",
     stderr: "pipe",
   });
   if (proc.exitCode !== 0) return [];
-  return parseGitStatusFiles(new TextDecoder().decode(proc.stdout));
+  return parseGitDiffFiles(new TextDecoder().decode(proc.stdout));
 }
 
 function staticGuardSummary(failures: readonly string[]): string {

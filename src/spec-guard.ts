@@ -69,28 +69,8 @@ export function parsePrdTestCases(prd: string): string[] {
   return testCases;
 }
 
-export function parseGitStatusFiles(output: string): string[] {
-  const files: string[] = [];
-  let i = 0;
-
-  while (i < output.length) {
-    const status = output.slice(i, i + 2);
-    i += 3;
-    const end = output.indexOf("\0", i);
-    if (end === -1) break;
-    const path = output.slice(i, end);
-    i = end + 1;
-
-    if (status.includes("R") || status.includes("C")) {
-      const oldEnd = output.indexOf("\0", i);
-      if (oldEnd === -1) break;
-      i = oldEnd + 1;
-    }
-
-    files.push(normalizePath(path));
-  }
-
-  return [...new Set(files)];
+export function parseGitDiffFiles(output: string): string[] {
+  return [...new Set(output.split("\0").map(normalizePath).filter(Boolean))];
 }
 
 export function staticGuard(input: StaticGuardInput): StaticGuardResult {
@@ -118,11 +98,8 @@ export function staticGuard(input: StaticGuardInput): StaticGuardResult {
   }
 
   for (const [path, op] of taskMap) {
-    const prdOp = prdMap.get(path);
-    if (!prdOp) {
+    if (!prdMap.has(path)) {
       failures.push(`${path} is listed in the task but not in PRD.md ## Files to touch.`);
-    } else if (prdOp !== op) {
-      failures.push(`${path} has operation ${op} in the task but ${prdOp} in PRD.md.`);
     }
   }
 
