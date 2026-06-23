@@ -4,11 +4,8 @@ import { log, err, startSpinner, formatDuration } from "./ui";
 import { ensureTemplates, readProjectFile, updateRunnerBlock } from "./files";
 import { invokeProvider, type Provider } from "./providers";
 import {
-  baselineFileExistence,
-  parseFirstUncheckedTask,
   parseGitStatusFiles,
-  validateStaticGuard,
-  type FileContract,
+  staticGuard,
 } from "./spec-guard";
 import {
   lastCommitReviewScope,
@@ -297,14 +294,6 @@ function gitChangedFiles(target: string, canInspect = isGitRepo(target)): string
   return parseGitStatusFiles(new TextDecoder().decode(proc.stdout));
 }
 
-function taskFilesForBaseline(tasks: string): FileContract[] {
-  try {
-    return parseFirstUncheckedTask(tasks)?.files ?? [];
-  } catch {
-    return [];
-  }
-}
-
 function staticGuardSummary(failures: readonly string[]): string {
   if (failures.length === 0) return "Static guard: PASS\n";
   return `Static guard: FAIL
@@ -339,7 +328,8 @@ async function runIteration(ctx: LoopContext, state: LoopState): Promise<Iterati
   const prdBefore = readProjectFile(ctx.target, "PRD.md");
   const tasksBefore = readProjectFile(ctx.target, "TASKS.md");
   const currentTask = getTask(tasksBefore);
-  const beforeExists = baselineFileExistence(ctx.target, taskFilesForBaseline(tasksBefore));
+  if (!currentTask) return { completed: true };
+
   const prompt = makePrompt(ctx.target, ctx.checkCmd, state.loop, currentTask, state.lastFailedOutput, ctx.checkDisabled);
 
   const stopProvider = startSpinner(`🌀 ${ctx.provider} is working · loop ${state.loop}`);
@@ -352,13 +342,10 @@ async function runIteration(ctx: LoopContext, state: LoopState): Promise<Iterati
   stopProvider();
 
   const changedFiles = gitChangedFiles(ctx.target, ctx.canAutoCommit);
-  const afterExists = baselineFileExistence(ctx.target, taskFilesForBaseline(tasksBefore));
-  const staticResult = validateStaticGuard({
+  const staticResult = staticGuard({
     prd: prdBefore,
-    tasks: tasksBefore,
+    currentTask,
     changedFiles,
-    beforeExists,
-    afterExists,
   });
   const staticSummary = staticGuardSummary(staticResult.failures);
   const staticOut = join(ctx.target, ".ralph", "static-guard-summary.txt");

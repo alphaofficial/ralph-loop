@@ -6,30 +6,11 @@ export type FileOp = TaskFileOp;
 
 export type FileContract = TaskFileContract;
 
-export type TaskContract = {
-  description: string;
-  files: FileContract[];
-  expectation: string;
-  testCases: string[];
-};
-
 export type StaticGuardInput = {
   prd: string;
   currentTask: CurrentTask;
   changedFiles: string[];
-  tasksBefore?: string;
-  tasksAfter?: string;
-  beforeExists?: Map<string, boolean>;
-  afterExists?: Map<string, boolean>;
-};
-
-type LegacyStaticGuardInput = {
-  prd: string;
-  tasks: string;
-  changedFiles: string[];
-  beforeExists: Map<string, boolean>;
-  afterExists: Map<string, boolean>;
-};
+} & Record<string, unknown>;
 
 export type StaticGuardResult = {
   passed: boolean;
@@ -88,40 +69,6 @@ export function parsePrdTestCases(prd: string): string[] {
   return testCases;
 }
 
-export function parseFirstUncheckedTask(tasks: string): TaskContract | null {
-  const lines = tasks.split("\n");
-  const start = lines.findIndex((line) => /^- \[ \] \S/.test(line));
-  if (start === -1) return null;
-
-  const block: string[] = [];
-  for (let i = start; i < lines.length; i++) {
-    if (i !== start && /^- \[[ x]\] \S/.test(lines[i])) break;
-    block.push(lines[i]);
-  }
-
-  const description = block[0].replace(/^- \[ \]\s*/, "").trim();
-  const filesLine = contractLine(block, "Files");
-  const expectation = contractLine(block, "Expectation");
-  const testCasesLine = contractLine(block, "Verification") ?? contractLine(block, "Test Cases");
-
-  return {
-    description,
-    files: filesLine ? parseFilesLine(filesLine) : [],
-    expectation: expectation?.trim() ?? "",
-    testCases: testCasesLine ? splitCommaList(testCasesLine) : [],
-  };
-}
-
-export function parseFilesLine(line: string): FileContract[] {
-  return splitCommaList(line).map((entry) => {
-    const match = entry.match(/^(.+?)\s+([CMD])$/);
-    if (!match) {
-      throw new Error(`Invalid file contract entry: ${entry}`);
-    }
-    return { path: normalizePath(match[1].trim()), op: match[2] as FileOp };
-  });
-}
-
 export function parseGitStatusFiles(output: string): string[] {
   const files: string[] = [];
   let i = 0;
@@ -153,6 +100,10 @@ export function staticGuard(input: StaticGuardInput): StaticGuardResult {
   const task = input.currentTask;
   const prdMap = contractMap(prdFiles, "PRD ## Files to touch", failures);
   const taskMap = contractMap(task.files, "selected task Files", failures);
+  const tasksBefore = stringInput(input, "tasksBefore");
+  const tasksAfter = stringInput(input, "tasksAfter");
+  const beforeExists = mapInput(input, "beforeExists");
+  const afterExists = mapInput(input, "afterExists");
 
   if (prdFiles.length === 0) {
     failures.push("PRD.md is missing a valid ## Files to touch tree.");
@@ -162,7 +113,7 @@ export function staticGuard(input: StaticGuardInput): StaticGuardResult {
   if (!task.expectation) failures.push("Selected task is missing an Expectation: line.");
   if (task.testCases.length === 0) failures.push("Selected task is missing a valid Test Cases: line.");
 
-  if (input.tasksBefore !== undefined && input.tasksAfter !== undefined && input.tasksBefore !== input.tasksAfter) {
+  if (tasksBefore !== undefined && tasksAfter !== undefined && tasksBefore !== tasksAfter) {
     failures.push("TASKS.md changed during provider execution; the Ralph runner owns task state.");
   }
 
@@ -200,65 +151,10 @@ export function staticGuard(input: StaticGuardInput): StaticGuardResult {
   }
 
   for (const [path, op] of taskMap) {
-    if (!input.beforeExists || !input.afterExists) continue;
+    if (!beforeExists || !afterExists) continue;
     const changed = changedFileSet.has(path);
-    const before = input.beforeExists?.get(path) ?? false;
-    const after = input.afterExists?.get(path) ?? false;
-
-    if (op === "C" && before) failures.push(`${path} is marked C but existed before the iteration.`);
-    if (op === "C" && !after) failures.push(`${path} is marked C but does not exist after the iteration.`);
-    if (op === "M" && changed && !before) failures.push(`${path} is marked M but did not exist before the iteration.`);
-    if (op === "M" && changed && !after) failures.push(`${path} is marked M but does not exist after the iteration.`);
-    if (op === "D" && !before) failures.push(`${path} is marked D but did not exist before the iteration.`);
-    if (op === "D" && after) failures.push(`${path} is marked D but still exists after the iteration.`);
-  }
-
-  return { passed: failures.length === 0, failures };
-}
-
-export function validateStaticGuard(input: LegacyStaticGuardInput): StaticGuardResult {
-  const failures: string[] = [];
-  const prdFiles = parsePrdFilesToTouch(input.prd);
-  const task = safeParseTask(input.tasks, failures);
-  const prdMap = contractMap(prdFiles, "PRD ## Files to touch", failures);
-  const taskMap = task ? contractMap(task.files, "selected task Files", failures) : new Map<string, FileOp>();
-
-  if (prdFiles.length === 0) {
-    failures.push("PRD.md is missing a valid ## Files to touch tree.");
-  }
-
-  if (!task) {
-    failures.push("TASKS.md has no unchecked task.");
-  } else {
-    if (task.files.length === 0) failures.push("Selected task is missing a valid Files: line.");
-    if (!task.expectation) failures.push("Selected task is missing an Expectation: line.");
-    if (task.testCases.length === 0) failures.push("Selected task is missing a valid Verification line.");
-  }
-
-  for (const [path, op] of taskMap) {
-    const prdOp = prdMap.get(path);
-    if (!prdOp) {
-      failures.push(`${path} is listed in the task but not in PRD.md ## Files to touch.`);
-    } else if (prdOp !== op) {
-      failures.push(`${path} has operation ${op} in the task but ${prdOp} in PRD.md.`);
-    }
-  }
-
-  for (const path of input.changedFiles) {
-    if (isRalphOperationalFile(path)) continue;
-    if (path === "PRD.md") {
-      failures.push("PRD.md was modified during an implementation iteration.");
-      continue;
-    }
-    if (!taskMap.has(path)) {
-      failures.push(`${path} changed but is not listed in the selected task Files: line.`);
-    }
-  }
-
-  for (const [path, op] of taskMap) {
-    const changed = input.changedFiles.includes(path);
-    const before = input.beforeExists.get(path) ?? false;
-    const after = input.afterExists.get(path) ?? false;
+    const before = beforeExists.get(path) ?? false;
+    const after = afterExists.get(path) ?? false;
 
     if (op === "C" && before) failures.push(`${path} is marked C but existed before the iteration.`);
     if (op === "C" && !after) failures.push(`${path} is marked C but does not exist after the iteration.`);
@@ -291,19 +187,6 @@ function extractSection(markdown: string, title: string): string {
   return lines.slice(start + 1, end === -1 ? undefined : end).join("\n");
 }
 
-function contractLine(block: string[], label: string): string | null {
-  const prefix = `${label}:`;
-  for (const entry of block) {
-    const line = entry.trimStart().replace(/^- /, "");
-    if (line.startsWith(prefix)) return line.slice(prefix.length).trim();
-  }
-  return null;
-}
-
-function splitCommaList(value: string): string[] {
-  return value.split(",").map((entry) => entry.trim()).filter(Boolean);
-}
-
 function contractMap(
   files: readonly FileContract[],
   label: string,
@@ -322,15 +205,6 @@ function contractMap(
     map.set(file.path, file.op);
   }
   return map;
-}
-
-function safeParseTask(tasks: string, failures: string[]): TaskContract | null {
-  try {
-    return parseFirstUncheckedTask(tasks);
-  } catch (e) {
-    failures.push(e instanceof Error ? e.message : String(e));
-    return null;
-  }
 }
 
 function parseTreeLine(rawLine: string): { indent: number; line: string; branch: boolean } | null {
@@ -359,4 +233,14 @@ function leadingSpaces(value: string): number {
 
 function normalizePath(path: string): string {
   return path.replace(/\\/g, "/").replace(/^\.\//, "").replace(/\/+/g, "/").trim();
+}
+
+function stringInput(input: StaticGuardInput, key: string): string | undefined {
+  const value = input[key];
+  return typeof value === "string" ? value : undefined;
+}
+
+function mapInput(input: StaticGuardInput, key: string): Map<string, boolean> | undefined {
+  const value = input[key];
+  return value instanceof Map ? value : undefined;
 }
