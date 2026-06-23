@@ -64,6 +64,16 @@ describe("getTask", () => {
 `)?.testCases
     ).toEqual(["legacy case one.", "legacy case two."]);
   });
+
+  test("accepts Files: N/A for verification-only tasks", () => {
+    expect(
+      getTask(`- [ ] Run the verification suite.
+  - Files: N/A
+  - Expectation: The configured verification command passes without code changes.
+  - Test Cases: Run the configured verification command.
+`)?.files
+    ).toEqual([]);
+  });
 });
 
 describe("checkTask and uncheckTask", () => {

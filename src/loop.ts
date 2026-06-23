@@ -19,6 +19,21 @@ export const makePrompt = makeLoopPrompt;
 
 export const SKIP = Symbol("skip");
 
+function writeUncheckedTask(target: string, currentTask: CurrentTask): void {
+  const tasksPath = join(target, "TASKS.md");
+  const latestTasks = readFileSync(tasksPath, "utf-8");
+  writeFileSync(tasksPath, uncheckSelectedTask(latestTasks, currentTask));
+}
+
+function tryUncheckCurrentTask(target: string, currentTask: CurrentTask): boolean {
+  try {
+    writeUncheckedTask(target, currentTask);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function handleStaticGuardFailure(
   target: string,
   currentTask: CurrentTask,
@@ -26,9 +41,7 @@ export function handleStaticGuardFailure(
 ): string {
   let summary = staticSummary;
   try {
-    const tasksPath = join(target, "TASKS.md");
-    const latestTasks = readFileSync(tasksPath, "utf-8");
-    writeFileSync(tasksPath, uncheckSelectedTask(latestTasks, currentTask));
+    writeUncheckedTask(target, currentTask);
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     summary += `${summary.endsWith("\n") ? "" : "\n"}Task rollback failed: ${message}\n`;
@@ -166,59 +179,6 @@ export async function autoCommit(target: string, loop: number, canCommit = isGit
   }
 }
 
-type TaskSnapshot = {
-  index: number;
-  text: string;
-};
-
-function firstUncheckedTask(target: string): TaskSnapshot | null {
-  let content: string;
-  try {
-    content = readFileSync(join(target, "TASKS.md"), "utf-8");
-  } catch {
-    return null;
-  }
-
-  const index = content.split("\n").findIndex((line) => line.startsWith("- [ ] "));
-  if (index === -1) return null;
-
-  return {
-    index,
-    text: content.split("\n")[index].slice("- [ ] ".length),
-  };
-}
-
-function uncheckTask(target: string, task: TaskSnapshot | null): boolean {
-  if (!task) return false;
-
-  const tasksFile = join(target, "TASKS.md");
-  let content: string;
-  try {
-    content = readFileSync(tasksFile, "utf-8");
-  } catch {
-    return false;
-  }
-
-  const lines = content.split("\n");
-  const checked = `- [x] ${task.text}`;
-  const unchecked = `- [ ] ${task.text}`;
-
-  if (lines[task.index] === checked) {
-    lines[task.index] = unchecked;
-    writeFileSync(tasksFile, lines.join("\n"));
-    return true;
-  }
-
-  const movedIndex = lines.findIndex((line) => line === checked);
-  if (movedIndex !== -1) {
-    lines[movedIndex] = unchecked;
-    writeFileSync(tasksFile, lines.join("\n"));
-    return true;
-  }
-
-  return false;
-}
-
 function gitChangedFiles(target: string, canInspect = isGitRepo(target)): string[] {
   if (!canInspect) return [];
   const proc = Bun.spawnSync(["git", "-C", target, "diff", "--name-only", "-z", "HEAD"], {
@@ -259,7 +219,6 @@ async function runIteration(ctx: LoopContext, state: LoopState): Promise<Iterati
   const total = formatDuration(Date.now() - ctx.loopStart);
   log(`loop ${state.loop} (${ctx.provider}) · total ${total}${state.consecutiveFailures > 0 ? ` · failure ${state.consecutiveFailures}/${ctx.maxLoops}` : ""}`);
 
-  const taskForFailureRecovery = firstUncheckedTask(ctx.target);
   const prdBefore = readProjectFile(ctx.target, "PRD.md");
   const tasksBefore = readProjectFile(ctx.target, "TASKS.md");
   const currentTask = getTask(tasksBefore);
@@ -339,7 +298,7 @@ async function runIteration(ctx: LoopContext, state: LoopState): Promise<Iterati
         process.env.RALPH_MODEL
       );
       if (!reviewPassed) {
-        if (uncheckTask(ctx.target, taskForFailureRecovery)) {
+        if (tryUncheckCurrentTask(ctx.target, currentTask)) {
           log("reopened task after failed auto review");
         }
         return { completed: false };
@@ -348,7 +307,7 @@ async function runIteration(ctx: LoopContext, state: LoopState): Promise<Iterati
     return { completed: true };
   }
 
-  if (uncheckTask(ctx.target, taskForFailureRecovery)) {
+  if (tryUncheckCurrentTask(ctx.target, currentTask)) {
     log("reopened task after failed verification");
   }
   return { completed: false };

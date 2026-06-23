@@ -57,18 +57,6 @@ export function parsePrdFilesToTouch(prd: string): FileContract[] {
   return files;
 }
 
-export function parsePrdTestCases(prd: string): string[] {
-  const section = extractSection(prd, "Test cases");
-  const testCases: string[] = [];
-
-  for (const rawLine of section.split("\n")) {
-    const match = rawLine.trim().match(/^-\s+(.+)$/);
-    if (match) testCases.push(match[1].trim());
-  }
-
-  return testCases;
-}
-
 export function parseGitDiffFiles(output: string): string[] {
   return [...new Set(output.split("\0").map(normalizePath).filter(Boolean))];
 }
@@ -134,10 +122,6 @@ export function staticGuard(input: StaticGuardInput): StaticGuardResult {
   }
 
   return { passed: failures.length === 0, failures };
-}
-
-export function isRalphOperationalFile(path: string): boolean {
-  return path === "TASKS.md" || path === "STATUS.md" || path.startsWith(".ralph/");
 }
 
 export function baselineFileExistence(target: string, files: readonly FileContract[]): Map<string, boolean> {

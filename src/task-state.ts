@@ -111,6 +111,8 @@ function contractLine(block: string[], label: string): string | null {
 }
 
 function parseFilesLine(line: string): TaskFileContract[] {
+  if (line.trim().toUpperCase() === "N/A") return [];
+
   return splitCommaList(line).map((entry) => {
     const match = entry.match(/^(.+?)\s+([CMD])$/);
     if (!match) throw new Error(`Invalid Files entry: ${entry}`);
