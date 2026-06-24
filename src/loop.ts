@@ -1,11 +1,10 @@
 import { join } from "node:path";
 import { writeFileSync, readFileSync } from "node:fs";
 import { log, err, startSpinner, formatDuration } from "./ui";
-import { ensureTemplates, readProjectFile, updateRunnerBlock, updateStatusNextStep } from "./files";
+import { ensureTemplates, readProjectFile, updateRunnerBlock, updateStaticGuardBlock, updateStatusNextStep } from "./files";
 import { invokeProvider, type Provider } from "./providers";
 import {
-  baselineFileExistence,
-  parseGitDiffFiles,
+  parseGitStatusEntries,
   staticGuard,
 } from "./spec-guard";
 import {
@@ -57,7 +56,7 @@ export function handleStaticGuardFailure(
     summary += `${summary.endsWith("\n") ? "" : "\n"}Task rollback failed: ${message}\n`;
   }
 
-  updateRunnerBlock(join(target, "STATUS.md"), summary);
+  updateStaticGuardBlock(join(target, "STATUS.md"), summary);
   return summary;
 }
 
@@ -189,14 +188,14 @@ export async function autoCommit(target: string, loop: number, canCommit = isGit
   }
 }
 
-function gitChangedFiles(target: string, canInspect = isGitRepo(target)): string[] {
+export function gitStatusEntries(target: string, canInspect = isGitRepo(target)) {
   if (!canInspect) return [];
-  const proc = Bun.spawnSync(["git", "-C", target, "diff", "--name-only", "-z", "HEAD"], {
+  const proc = Bun.spawnSync(["git", "-C", target, "status", "--porcelain=v1", "-z", "--untracked-files=all"], {
     stdout: "pipe",
     stderr: "pipe",
   });
   if (proc.exitCode !== 0) return [];
-  return parseGitDiffFiles(new TextDecoder().decode(proc.stdout));
+  return parseGitStatusEntries(new TextDecoder().decode(proc.stdout));
 }
 
 function staticGuardSummary(failures: readonly string[]): string {
@@ -233,7 +232,6 @@ async function runIteration(ctx: LoopContext, state: LoopState): Promise<Iterati
   const tasksBefore = readProjectFile(ctx.target, "TASKS.md");
   const currentTask = getTask(tasksBefore);
   if (!currentTask) return { completed: true };
-  const beforeExists = baselineFileExistence(ctx.target, currentTask.files);
 
   const prompt = makeLoopPrompt(ctx.target, ctx.checkCmd, state.loop, currentTask, state.lastFailedOutput, ctx.checkDisabled);
 
@@ -246,14 +244,11 @@ async function runIteration(ctx: LoopContext, state: LoopState): Promise<Iterati
   }
   stopProvider();
 
-  const changedFiles = gitChangedFiles(ctx.target, ctx.canAutoCommit);
-  const afterExists = baselineFileExistence(ctx.target, currentTask.files);
+  const changedEntries = gitStatusEntries(ctx.target, ctx.canAutoCommit);
   const staticResult = staticGuard({
     prd: prdBefore,
     currentTask,
-    changedFiles,
-    beforeExists,
-    afterExists,
+    changedEntries,
   });
   const staticSummary = staticGuardSummary(staticResult.failures);
   const staticOut = join(ctx.target, ".ralph", "static-guard-summary.txt");
@@ -266,6 +261,7 @@ async function runIteration(ctx: LoopContext, state: LoopState): Promise<Iterati
     return { completed: false, lastFailedOutput: staticSummaryWithRollbackNotes };
   }
   writeFileSync(staticOut, staticSummary, { mode: 0o600 });
+  updateStaticGuardBlock(join(ctx.target, "STATUS.md"), staticSummary);
 
   const summaryFile = join(ctx.target, ".ralph", "check-summary.txt");
   const checkOut = join(ctx.target, ".ralph", "check-output.txt");

@@ -62,6 +62,10 @@ Read PRD.md and start with the first task.
 {"status":"approved","changes":[]}
 <!-- RALPH_REVIEW_FEEDBACK:END -->
 
+<!-- RALPH_STATIC_GUARD:START -->
+Static guard: PASS
+<!-- RALPH_STATIC_GUARD:END -->
+
 <!-- RALPH_RUNNER:START -->
 No automated verification has run yet.
 <!-- RALPH_RUNNER:END -->

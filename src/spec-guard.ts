@@ -1,5 +1,3 @@
-import { existsSync } from "node:fs";
-import { join } from "node:path";
 import type { CurrentTask, TaskFileContract, TaskFileOp } from "./task-state";
 
 export type FileOp = TaskFileOp;
@@ -9,8 +7,14 @@ export type FileContract = TaskFileContract;
 export type StaticGuardInput = {
   prd: string;
   currentTask: CurrentTask;
-  changedFiles: string[];
+  changedEntries?: GitStatusEntry[];
 } & Record<string, unknown>;
+
+export type GitStatusEntry = {
+  path: string;
+  index: string;
+  worktree: string;
+};
 
 export type StaticGuardResult = {
   passed: boolean;
@@ -57,8 +61,24 @@ export function parsePrdFilesToTouch(prd: string): FileContract[] {
   return files;
 }
 
-export function parseGitDiffFiles(output: string): string[] {
-  return [...new Set(output.split("\0").map(normalizePath).filter(Boolean))];
+export function parseGitStatusEntries(output: string): GitStatusEntry[] {
+  const tokens = output.split("\0").filter(Boolean);
+  const entries: GitStatusEntry[] = [];
+
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
+    if (token.length < 4) continue;
+
+    const index = token[0];
+    const worktree = token[1];
+    const path = normalizePath(token.slice(3));
+    if (!path) continue;
+
+    entries.push({ path, index, worktree });
+    if (index === "R" || index === "C") i++;
+  }
+
+  return entries;
 }
 
 export function staticGuard(input: StaticGuardInput): StaticGuardResult {
@@ -67,8 +87,6 @@ export function staticGuard(input: StaticGuardInput): StaticGuardResult {
   const task = input.currentTask;
   const prdMap = contractMap(prdFiles, "PRD ## Files to touch", failures);
   const taskMap = contractMap(task.files, "selected task Files", failures);
-  const beforeExists = mapInput(input, "beforeExists");
-  const afterExists = mapInput(input, "afterExists");
 
   if (prdFiles.length === 0) {
     failures.push("PRD.md is missing a valid ## Files to touch tree.");
@@ -83,9 +101,10 @@ export function staticGuard(input: StaticGuardInput): StaticGuardResult {
     }
   }
 
-  const changedFileSet = new Set(input.changedFiles.map(normalizePath));
+  const changedEntries = input.changedEntries ?? [];
 
-  for (const path of changedFileSet) {
+  for (const entry of changedEntries) {
+    const path = normalizePath(entry.path);
     if (path === "PRD.md") {
       failures.push("PRD.md was modified during an implementation iteration.");
       continue;
@@ -95,34 +114,17 @@ export function staticGuard(input: StaticGuardInput): StaticGuardResult {
       continue;
     }
     if (path === "STATUS.md" || path.startsWith(".ralph/")) continue;
-    if (!taskMap.has(path)) {
+    const expectedOp = taskMap.get(path);
+    if (!expectedOp) {
       failures.push(`${path} changed but is not listed in the selected task Files: line.`);
+      continue;
+    }
+    if (!statusMatchesTaskOp(entry, expectedOp)) {
+      failures.push(`${path} is marked ${expectedOp} but git status is ${entry.index}${entry.worktree}.`);
     }
   }
 
-  for (const [path, op] of taskMap) {
-    if (!beforeExists || !afterExists) continue;
-    const changed = changedFileSet.has(path);
-    const before = beforeExists.get(path) ?? false;
-    const after = afterExists.get(path) ?? false;
-
-    if (op === "C" && before) failures.push(`${path} is marked C but existed before the iteration.`);
-    if (op === "C" && !after) failures.push(`${path} is marked C but does not exist after the iteration.`);
-    if (op === "M" && changed && !before) failures.push(`${path} is marked M but did not exist before the iteration.`);
-    if (op === "M" && changed && !after) failures.push(`${path} is marked M but does not exist after the iteration.`);
-    if (op === "D" && !before) failures.push(`${path} is marked D but did not exist before the iteration.`);
-    if (op === "D" && after) failures.push(`${path} is marked D but still exists after the iteration.`);
-  }
-
   return { passed: failures.length === 0, failures };
-}
-
-export function baselineFileExistence(target: string, files: readonly FileContract[]): Map<string, boolean> {
-  const result = new Map<string, boolean>();
-  for (const file of files) {
-    result.set(file.path, existsSync(join(target, file.path)));
-  }
-  return result;
 }
 
 function extractSection(markdown: string, title: string): string {
@@ -181,7 +183,13 @@ function normalizePath(path: string): string {
   return path.replace(/\\/g, "/").replace(/^\.\//, "").replace(/\/+/g, "/").trim();
 }
 
-function mapInput(input: StaticGuardInput, key: string): Map<string, boolean> | undefined {
-  const value = input[key];
-  return value instanceof Map ? value : undefined;
+function statusMatchesTaskOp(entry: GitStatusEntry, expectedOp: FileOp): boolean {
+  const status = `${entry.index}${entry.worktree}`;
+  if (status === "!!") return true;
+  if (status.includes("U")) return false;
+
+  if (expectedOp === "C") return status === "??" || entry.index === "A";
+  if (expectedOp === "M") return entry.index === "M" || entry.worktree === "M" || entry.index === "T" || entry.worktree === "T";
+  if (expectedOp === "D") return entry.index === "D" || entry.worktree === "D";
+  return false;
 }

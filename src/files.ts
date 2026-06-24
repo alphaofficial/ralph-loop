@@ -66,6 +66,12 @@ export function updateReviewFeedbackBlock(statusFile: string, content: string) {
   updateManagedBlock(statusFile, START, END, content);
 }
 
+export function updateStaticGuardBlock(statusFile: string, content: string) {
+  const START = "<!-- RALPH_STATIC_GUARD:START -->";
+  const END = "<!-- RALPH_STATIC_GUARD:END -->";
+  updateManagedBlock(statusFile, START, END, content);
+}
+
 export function updateStatusNextStep(statusFile: string, content: string) {
   const heading = "# Next step";
   const replacement = `${heading}\n${content.trimEnd()}`;

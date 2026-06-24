@@ -86,6 +86,10 @@ ${clarifications}
    {"status":"approved","changes":[]}
    <!-- RALPH_REVIEW_FEEDBACK:END -->
 
+   <!-- RALPH_STATIC_GUARD:START -->
+   Static guard: PASS
+   <!-- RALPH_STATIC_GUARD:END -->
+
 Rules:
 - Be specific, detailed, and actionable. Do not leave implementation choices to future providers.
 - PRD.md is the source of truth. TASKS.md must slice that source of truth into per-iteration work without adding new scope.
@@ -94,7 +98,7 @@ Rules:
 - Tasks should be flat, no hierarchy, no titles or sections in TASKS.md. Use only checklist items and their Files, Expectation, and Test Cases lines.
 - Look at the existing codebase to inform requirements and constraints.
 - Write all three files to the project root directory. Overwrite them completely if they already exist.
-- STATUS.md must only include Current status, Last attempt, Known issues, Next step, and Ralph runner blocks. PRD.md is authoritative; record blocking spec gaps under Known issues instead of making non-spec choices.
+- STATUS.md must only include Current status, Last attempt, Known issues, Next step, and Ralph managed blocks. PRD.md is authoritative; record blocking spec gaps under Known issues instead of making non-spec choices.
 - Add requirement that before each step is done, there are test coverage for new changes, and all tests pass.
 - Add requirement that after all steps are done, it is properly tested or verified before declaring the work complete.
 - Do NOT create any other files.
@@ -139,6 +143,8 @@ Rules:
 - Implement that single task only.
 - Inspect the JSON inside the STATUS.md block delimited by "<!-- RALPH_REVIEW_FEEDBACK:START -->" and "<!-- RALPH_REVIEW_FEEDBACK:END -->". If it has "status":"changes_requested", address those requested changes as part of this iteration.
 - Do not modify the RALPH_REVIEW_FEEDBACK block in STATUS.md. Ralph manages that block.
+- Inspect the STATUS.md block delimited by "<!-- RALPH_STATIC_GUARD:START -->" and "<!-- RALPH_STATIC_GUARD:END -->". If it reports "Static guard: FAIL", resolve those failures as part of the selected task.
+- Do not modify the RALPH_STATIC_GUARD block in STATUS.md. Ralph manages that block.
 - Touch only implementation files listed in the selected task's Files.
 - Touch operational Ralph files like STATUS.md and .ralph/ files as needed, but do not touch PRD.md or TASKS.md.
 - Every implementation file in the selected task's Files: line must also appear in PRD.md ## Files to touch. The selected task's Files line owns the per-iteration C/M/D marker.
@@ -211,11 +217,13 @@ export function makeAutoReviewFeedbackPrompt(
 Your job is to do an adversarial review of the work completed in this iteration after auto-commit.
 
 Review rules:
-- Scope is limited to the project planning context below and the touched files from this iteration.
+- Scope is limited to the selected current task Files list and the PRD below.
+- Touched files outside the selected current task Files list are scope violations.
+- Do not request edits to files outside the selected current task Files list, even if they appear in the diff.
 - Focus on blockers only. Ignore nits, style comments, speculative refactors, and unrelated improvements.
-- Check whether the touched-file changes fully satisfy the task and acceptance criteria.
-- Check whether the touched-file changes are internally consistent with the surrounding code they directly affect.
-- Do not request changes in untouched files. Every requested change must target one of the touched files listed below.
+- Check whether the changes fully satisfy the selected task and acceptance criteria.
+- Check whether the changes are internally consistent with the surrounding code they directly affect.
+- Every requested change must target a file listed in the selected current task Files list.
 - Look out for implementation correctness in scope
 - Look out for spurious tests. 
     - we should NEVER assert mock behavior
@@ -224,9 +232,9 @@ Review rules:
     - we should NEVER write tests for non-application behaviour
 
 Output contract:
-- Return ONLY valid JSON.
-- Return exactly one compact JSON object and nothing else.
-- Do not include Markdown fences, prose outside JSON, comments, headings, code blocks, or trailing text.
+- Return ONLY the specified format. {"status":"changes_requested | approved","changes":[{"file":"relative/path","line":123,"requested_change":"Concrete blocker to fix."}]}
+- Return exactly one compact object and nothing else.
+- Do not include text, prose outside the specified format, comments, headings, code blocks, or trailing text or bullet points.
 - If there are no blocking changes, return: {"status":"approved","changes":[]}
 - If there are blocking changes, return: {"status":"changes_requested","changes":[{"file":"relative/path","line":123,"requested_change":"Concrete blocker to fix."}]}
 

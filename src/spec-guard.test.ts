@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseGitDiffFiles, staticGuard } from "./spec-guard";
+import { parseGitStatusEntries, staticGuard } from "./spec-guard";
 import type { CurrentTask } from "./task-state";
 
 const prd = `# PRD
@@ -40,15 +40,12 @@ describe("staticGuard", () => {
     const result = staticGuard({
       prd,
       currentTask,
-      changedFiles: ["src/spec-guard.ts", "src/spec-guard.test.ts", "STATUS.md", ".ralph/static-guard-summary.txt"],
-      beforeExists: new Map([
-        ["src/spec-guard.ts", true],
-        ["src/spec-guard.test.ts", false],
-      ]),
-      afterExists: new Map([
-        ["src/spec-guard.ts", true],
-        ["src/spec-guard.test.ts", true],
-      ]),
+      changedEntries: [
+        { path: "src/spec-guard.ts", index: " ", worktree: "M" },
+        { path: "src/spec-guard.test.ts", index: "?", worktree: "?" },
+        { path: "STATUS.md", index: " ", worktree: "M" },
+        { path: ".ralph/static-guard-summary.txt", index: "?", worktree: "?" },
+      ],
     });
 
     expect(result).toEqual({ passed: true, failures: [] });
@@ -58,9 +55,10 @@ describe("staticGuard", () => {
     const result = staticGuard({
       prd,
       currentTask,
-      changedFiles: ["src/spec-guard.ts", "src/loop.ts"],
-      beforeExists: new Map([["src/spec-guard.ts", true]]),
-      afterExists: new Map([["src/spec-guard.ts", true]]),
+      changedEntries: [
+        { path: "src/spec-guard.ts", index: " ", worktree: "M" },
+        { path: "src/loop.ts", index: " ", worktree: "M" },
+      ],
     });
 
     expect(result.passed).toBe(false);
@@ -74,9 +72,7 @@ describe("staticGuard", () => {
         ...currentTask,
         files: [{ path: "src/loop.test.ts", op: "M" }],
       },
-      changedFiles: ["src/loop.test.ts"],
-      beforeExists: new Map([["src/loop.test.ts", true]]),
-      afterExists: new Map([["src/loop.test.ts", true]]),
+      changedEntries: [{ path: "src/loop.test.ts", index: " ", worktree: "M" }],
     });
 
     expect(result).toEqual({ passed: true, failures: [] });
@@ -91,9 +87,7 @@ describe("staticGuard", () => {
     const result = staticGuard({
       prd,
       currentTask: taskWithInvalidFiles,
-      changedFiles: ["src/not-listed.ts"],
-      beforeExists: new Map([["src/not-listed.ts", true]]),
-      afterExists: new Map([["src/not-listed.ts", true]]),
+      changedEntries: [{ path: "src/not-listed.ts", index: " ", worktree: "M" }],
     });
 
     expect(result.passed).toBe(false);
@@ -107,15 +101,7 @@ describe("staticGuard", () => {
         ...currentTask,
         testCases: ["Type check verifies all route-path code compiles using `req.ctx` and no longer relies on deleted request typings."],
       },
-      changedFiles: ["src/spec-guard.ts"],
-      beforeExists: new Map([
-        ["src/spec-guard.ts", true],
-        ["src/spec-guard.test.ts", false],
-      ]),
-      afterExists: new Map([
-        ["src/spec-guard.ts", true],
-        ["src/spec-guard.test.ts", true],
-      ]),
+      changedEntries: [{ path: "src/spec-guard.ts", index: " ", worktree: "M" }],
     });
 
     expect(result).toEqual({ passed: true, failures: [] });
@@ -130,9 +116,10 @@ describe("staticGuard", () => {
         expectation: "The configured verification command passes without code changes.",
         testCases: ["Run the configured verification command."],
       },
-      changedFiles: ["STATUS.md", ".ralph/check-output.txt"],
-      beforeExists: new Map(),
-      afterExists: new Map(),
+      changedEntries: [
+        { path: "STATUS.md", index: " ", worktree: "M" },
+        { path: ".ralph/check-output.txt", index: "?", worktree: "?" },
+      ],
     });
 
     expect(result).toEqual({ passed: true, failures: [] });
@@ -147,28 +134,21 @@ describe("staticGuard", () => {
         expectation: "The configured verification command passes without code changes.",
         testCases: ["Run the configured verification command."],
       },
-      changedFiles: ["src/spec-guard.ts"],
-      beforeExists: new Map(),
-      afterExists: new Map(),
+      changedEntries: [{ path: "src/spec-guard.ts", index: " ", worktree: "M" }],
     });
 
     expect(result.passed).toBe(false);
     expect(result.failures).toContain("src/spec-guard.ts changed but is not listed in the selected task Files: line.");
   });
 
-  test("fails when PRD.md or TASKS.md appears in the git diff", () => {
+  test("fails when PRD.md or TASKS.md appears in git status", () => {
     const result = staticGuard({
       prd,
       currentTask,
-      changedFiles: ["PRD.md", "TASKS.md"],
-      beforeExists: new Map([
-        ["src/spec-guard.ts", true],
-        ["src/spec-guard.test.ts", false],
-      ]),
-      afterExists: new Map([
-        ["src/spec-guard.ts", true],
-        ["src/spec-guard.test.ts", true],
-      ]),
+      changedEntries: [
+        { path: "PRD.md", index: " ", worktree: "M" },
+        { path: "TASKS.md", index: " ", worktree: "M" },
+      ],
     });
 
     expect(result.passed).toBe(false);
@@ -176,29 +156,54 @@ describe("staticGuard", () => {
     expect(result.failures).toContain("TASKS.md was modified during provider execution; the Ralph runner owns task state.");
   });
 
-  test("does not compare ignored TASKS.md snapshots outside the git diff", () => {
+  test("does not compare ignored TASKS.md snapshots outside git status", () => {
     const result = staticGuard({
       prd,
       currentTask: {
         ...currentTask,
         files: [{ path: "src/spec-guard.ts", op: "M" }],
       },
-      changedFiles: ["src/spec-guard.ts"],
+      changedEntries: [{ path: "src/spec-guard.ts", index: " ", worktree: "M" }],
       tasksBefore: "- [ ] Selected task.\n",
       tasksAfter: "- [x] Selected task.\n",
-      beforeExists: new Map([["src/spec-guard.ts", true]]),
-      afterExists: new Map([["src/spec-guard.ts", true]]),
     });
 
     expect(result).toEqual({ passed: true, failures: [] });
   });
+
+  test("treats untracked files as valid creates for retry attempts", () => {
+    const result = staticGuard({
+      prd,
+      currentTask: {
+        ...currentTask,
+        files: [{ path: "src/spec-guard.test.ts", op: "C" }],
+      },
+      changedEntries: [{ path: "src/spec-guard.test.ts", index: "?", worktree: "?" }],
+    });
+
+    expect(result).toEqual({ passed: true, failures: [] });
+  });
+
+  test("fails when git status does not match the task file operation", () => {
+    const result = staticGuard({
+      prd,
+      currentTask: {
+        ...currentTask,
+        files: [{ path: "src/spec-guard.test.ts", op: "C" }],
+      },
+      changedEntries: [{ path: "src/spec-guard.test.ts", index: " ", worktree: "M" }],
+    });
+
+    expect(result.passed).toBe(false);
+    expect(result.failures).toContain("src/spec-guard.test.ts is marked C but git status is  M.");
+  });
 });
 
-describe("parseGitDiffFiles", () => {
-  test("parses null-separated git diff name output", () => {
-    expect(parseGitDiffFiles("src/loop.ts\0./src/spec-guard.ts\0src/loop.ts\0")).toEqual([
-      "src/loop.ts",
-      "src/spec-guard.ts",
+describe("parseGitStatusEntries", () => {
+  test("parses null-separated git status porcelain output", () => {
+    expect(parseGitStatusEntries(" M src/loop.ts\0?? ./src/spec-guard.ts\0")).toEqual([
+      { path: "src/loop.ts", index: " ", worktree: "M" },
+      { path: "src/spec-guard.ts", index: "?", worktree: "?" },
     ]);
   });
 });

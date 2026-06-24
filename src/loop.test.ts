@@ -1,8 +1,8 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
-import { handleStaticGuardFailure, makePrompt, updateTaskAfterVerification } from "./loop";
+import { gitStatusEntries, handleStaticGuardFailure, makePrompt, updateTaskAfterVerification } from "./loop";
 import { makeAutoReviewFeedbackPrompt } from "./prompts";
 import { getTask } from "./task-state";
 
@@ -42,6 +42,8 @@ describe("makePrompt", () => {
       );
       expect(prompt).toContain("Ralph has already selected the current task. Do not choose a task from TASKS.md.");
       expect(prompt).toContain("Do not edit TASKS.md. The Ralph runner owns checking and unchecking the selected task.");
+      expect(prompt).toContain("<!-- RALPH_STATIC_GUARD:START -->");
+      expect(prompt).toContain("If it reports \"Static guard: FAIL\", resolve those failures as part of the selected task.");
       expect(prompt).not.toContain("<TASKS>");
       expect(prompt).not.toContain("Completed task.");
       expect(prompt).not.toContain("Pick the FIRST unchecked task");
@@ -82,11 +84,37 @@ describe("makeAutoReviewFeedbackPrompt", () => {
       expect(prompt).toContain("# PRD");
       expect(prompt).toContain("Full PRD context.");
       expect(prompt).toContain("Description: Review the selected task only.");
+      expect(prompt).toContain("Scope is limited to the selected current task Files list and the PRD below.");
+      expect(prompt).toContain("Touched files outside the selected current task Files list are scope violations.");
+      expect(prompt).toContain("Every requested change must target a file listed in the selected current task Files list.");
       expect(prompt).toContain("diff --git a/src/loop.ts b/src/loop.ts");
       expect(prompt).not.toContain("<TASKS>");
       expect(prompt).not.toContain("Completed task.");
       expect(prompt).not.toContain("<STATUS>");
       expect(prompt).not.toContain("Status-only context.");
+    } finally {
+      rmSync(target, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("gitStatusEntries", () => {
+  test("reports nested untracked files instead of collapsed directories", () => {
+    const target = mkdtempSync(join(tmpdir(), "ralph-loop-test-"));
+    try {
+      const init = Bun.spawnSync(["git", "init"], { cwd: target, stdout: "ignore", stderr: "ignore" });
+      if (init.exitCode !== 0) throw new Error("git init failed");
+
+      mkdirSync(join(target, "src", "extractions"), { recursive: true });
+      writeFileSync(join(target, "src", "extractions", "types.ts"), "export type Extraction = {};\n");
+
+      const entries = gitStatusEntries(target, true);
+      expect(entries).toContainEqual({
+        path: "src/extractions/types.ts",
+        index: "?",
+        worktree: "?",
+      });
+      expect(entries.map((entry) => entry.path)).not.toContain("src/extractions/");
     } finally {
       rmSync(target, { recursive: true, force: true });
     }
@@ -121,6 +149,7 @@ describe("runner-owned task state", () => {
       expect(readFileSync(join(target, "STATUS.md"), "utf-8")).toContain(
         "src/outside.ts changed but is not listed in the selected task Files: line."
       );
+      expect(readFileSync(join(target, "STATUS.md"), "utf-8")).toContain("<!-- RALPH_STATIC_GUARD:START -->");
     } finally {
       rmSync(target, { recursive: true, force: true });
     }
