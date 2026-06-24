@@ -113,7 +113,7 @@ Commands:
   pi                    Run loop with Pi
 
 Options:
-  --max-loops N         Max consecutive failed iterations (default: 8)
+  --max-loops N         Max consecutive failed iterations (default: 3)
   --check CMD           Override verification command
   --no-check            Disable runner-managed verification
   --dry-run             Show prompt without invoking
@@ -129,7 +129,7 @@ Environment:
 function parseArgs() {
   let command: string | undefined;
   let target = process.cwd();
-  let maxLoops = parseInt(process.env.RALPH_MAX_LOOPS ?? "8", 10);
+  let maxLoops = parseInt(process.env.RALPH_MAX_LOOPS ?? "3", 10);
   let checkCmd = "";
   let noCheck = false;
   let dryRun = false;

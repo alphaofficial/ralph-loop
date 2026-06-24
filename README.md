@@ -121,7 +121,7 @@ ralph claude --no-check
 `--no-check` suppresses auto-detection and records verification as skipped. It cannot be combined with `--check`.
 
 ## Max loops
-Default is 8.
+Default is 3.
 
 This caps consecutive failed iterations before the runner gives up.
 
