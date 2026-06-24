@@ -68,6 +68,7 @@ ${clarifications}
      - Test Cases: comma separated list of tests or verification checks for this task. Each entry should be derived from or traceable to PRD.md ## Test cases, but it may be narrower or more specific to the current iteration; it does not need to exactly match PRD test-case wording.
 
    Break the work into small, focused tasks, one per iteration. Each task's Files entries must be a subset of PRD.md ## Files to touch. The task's Files line owns the per-iteration C/M/D markers, so a file listed as C in PRD.md may be listed as M by a later task that modifies it. Each task's Test Cases entries must map to the intent of PRD.md ## Test cases without requiring a 1:1 exact string match.
+   Task Files lines must list only implementation files, or N/A for verification-only tasks. Do not list PRD.md, TASKS.md, STATUS.md, or .ralph/* in any task Files line.
 
 3. STATUS.md — Initial status:
    # Current status
@@ -93,6 +94,10 @@ ${clarifications}
 Rules:
 - Be specific, detailed, and actionable. Do not leave implementation choices to future providers.
 - PRD.md is the source of truth. TASKS.md must slice that source of truth into per-iteration work without adding new scope.
+- PRD.md and TASKS.md must be final and implementation-ready. Do not encode uncertainty, research, discovery, clarification, external reference inspection, or PRD refinement as tasks.
+- If interactive clarification is enabled, ask clarifying questions before writing files. If interactive clarification is not enabled, make the best complete implementation contract from the provided description and existing codebase context without uncertain placeholders.
+- Do not write uncertain placeholders such as TBD, confirm, investigate, inspect, determine, narrow, or "exact behavior to be checked".
+- TASKS.md must contain only executable implementation or verification tasks derived from the finalized PRD.
 - Providers using these files must not do independent product or architecture thinking. Give them enough implementation detail to execute the spec only.
 - Tasks should be small enough for one AI iteration each.
 - Tasks should be flat, no hierarchy, no titles or sections in TASKS.md. Use only checklist items and their Files, Expectation, and Test Cases lines.
