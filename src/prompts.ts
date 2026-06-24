@@ -1,4 +1,5 @@
 import { readProjectFile } from "./files";
+import type { CurrentTask } from "./task-state";
 
 export const MAX_CLARIFYING_QUESTIONS = 5;
 
@@ -25,15 +26,32 @@ ${clarifications}
 
 ` : ""}Generate exactly three files. Write each file to disk:
 
-1. PRD.md — Product requirements document with these sections:
+1. PRD.md - Product requirements document and implementation contract.
+   PRD.md is the source of truth for the entire implementation. It must be detailed enough that future providers implement from the spec only, without inventing product behavior, architecture, files, dependencies, abstractions, or tests.
+
+   Use exactly these sections:
    # Goal
    (what done looks like, 1-2 sentences)
 
    ## Requirements
    (bulleted list of specific requirements)
 
-   ## Technical requirements
-   (usually 3-7 concise bullets covering relevant interfaces/APIs/CLI flags/file formats/events/data contracts, affected modules/systems, high-level implementation strategy, and any integration/migration/compatibility/security/performance constraints; brief pseudocode or examples are okay when they clarify a contract or flow; avoid code-heavy detail, lengthy pseudocode, and low-level minutiae; use a short TBD/open question bullet if uncertain)
+   ## Implementation details
+   (full technical requirements: exact implementation approach, affected modules, interfaces/APIs/CLI flags/file formats/events/data contracts, file-level responsibilities, error handling, compatibility/security/performance constraints, integration/migration notes, and any required pseudocode or examples)
+
+   ## Files to touch
+   (complete implementation allowlist for the whole change, formatted as a nested Markdown list; directory rows end with /, and every file row ends with C=create, M=modify, or D=delete)
+   Example:
+   - src/
+     - feature.ts C
+     - existing.ts M
+   - README.md M
+
+   ## Test cases
+   (bulleted list of all required tests or verification checks for the whole change)
+
+   ## Guardrails
+   (strict rules providers must follow)
 
    ## Constraints
    (bulleted list of constraints — e.g. use existing patterns, keep changes small)
@@ -41,10 +59,15 @@ ${clarifications}
    ## Definition of done
    (bulleted list of success criteria — e.g. tests pass, behavior works)
 
-2. TASKS.md — Ordered checklist of tasks:
-   - [ ] task 1
-   - [ ] task 2
-   (break the work into small, focused tasks — one per iteration)
+2. TASKS.md - Ordered checklist of tasks.
+   Each task must use this format with comma-separated Files and Test Cases:
+
+   - [ ] Task description.
+     - Files: path/to/file.ts M, path/to/new-file.ts C
+     - Expectation: One concise completion expectation aligned to PRD.md.
+     - Test Cases: comma separated list of tests or verification checks for this task. Each entry should be derived from or traceable to PRD.md ## Test cases, but it may be narrower or more specific to the current iteration; it does not need to exactly match PRD test-case wording.
+
+   Break the work into small, focused tasks, one per iteration. Each task's Files entries must be a subset of PRD.md ## Files to touch. The task's Files line owns the per-iteration C/M/D markers, so a file listed as C in PRD.md may be listed as M by a later task that modifies it. Each task's Test Cases entries must map to the intent of PRD.md ## Test cases without requiring a 1:1 exact string match.
 
 3. STATUS.md — Initial status:
    # Current status
@@ -52,12 +75,6 @@ ${clarifications}
 
    # Last attempt
    N/A
-
-   # Decisions made
-   None yet.
-
-   # Tradeoffs and deviations
-   None yet.
 
    # Known issues
    None.
@@ -69,15 +86,19 @@ ${clarifications}
    {"status":"approved","changes":[]}
    <!-- RALPH_REVIEW_FEEDBACK:END -->
 
+   <!-- RALPH_STATIC_GUARD:START -->
+   Static guard: PASS
+   <!-- RALPH_STATIC_GUARD:END -->
+
 Rules:
-- Be specific and actionable, not vague.
-- Keep PRD.md concise. The Technical requirements section should clarify implementation-relevant shape without bloating the PRD: usually 3-7 short bullets; brief pseudocode or examples are okay when they clarify a contract or flow; no code blocks, code-heavy detail, lengthy pseudocode, or low-level minutiae.
+- Be specific, detailed, and actionable. Do not leave implementation choices to future providers.
+- PRD.md is the source of truth. TASKS.md must slice that source of truth into per-iteration work without adding new scope.
+- Providers using these files must not do independent product or architecture thinking. Give them enough implementation detail to execute the spec only.
 - Tasks should be small enough for one AI iteration each.
-- Tasks should be flat, no hierarchy, no titles or sections in TASKS.md. Just a simple checklist.
+- Tasks should be flat, no hierarchy, no titles or sections in TASKS.md. Use only checklist items and their Files, Expectation, and Test Cases lines.
 - Look at the existing codebase to inform requirements and constraints.
 - Write all three files to the project root directory. Overwrite them completely if they already exist.
-- In STATUS.md, keep the decisions/tradeoffs sections so future loop runs have an explicit place to record spec gaps, non-spec decisions, and notable deviations.
-- Existing entries under "# Decisions made" and "# Tradeoffs and deviations" are append-only. Do not rewrite those sections; add new information as markdown list items.
+- STATUS.md must only include Current status, Last attempt, Known issues, Next step, and Ralph managed blocks. PRD.md is authoritative; record blocking spec gaps under Known issues instead of making non-spec choices.
 - Add requirement that before each step is done, there are test coverage for new changes, and all tests pass.
 - Add requirement that after all steps are done, it is properly tested or verified before declaring the work complete.
 - Do NOT create any other files.
@@ -89,44 +110,55 @@ export function makeLoopPrompt(
   target: string,
   checkCmd: string,
   loopNo: number,
+  currentTask: CurrentTask | null,
+  lastFailedOutput = "",
   checkDisabled = false
 ) {
   const prd = readProjectFile(target, "PRD.md");
-  const tasks = readProjectFile(target, "TASKS.md");
   const status = readProjectFile(target, "STATUS.md");
 
-  return `You are running one iteration of a Ralph loop inside this project.
+  let content = `You are running one iteration of a Ralph loop inside this project.
 
-The project planning files are embedded below. Use these embedded copies instead of reading PRD.md, TASKS.md, or STATUS.md via tool calls.
+The project planning context is embedded below. Use these embedded copies instead of reading PRD.md, TASKS.md, or STATUS.md via tool calls.
 
 <PRD>
 ${prd}
 </PRD>
 
-<TASKS>
-${tasks}
-</TASKS>
-
 <STATUS>
 ${status}
 </STATUS>
 
-CRITICAL: You must complete exactly ONE unchecked task from TASKS.md, then stop.
+${formatCurrentTask(currentTask)}
+
+CRITICAL: You must complete exactly ONE Ralph-selected current task, then stop.
 Do NOT attempt multiple tasks. Another fresh instance will handle the next task.
 
+PRD.md is the source-of-truth implementation contract. Implement only what PRD.md and the selected task explicitly specify. Do not invent product behavior, architecture, files, dependencies, abstractions, or tests. Use code inspection only to locate the specified implementation points and follow existing style.
+
 Rules:
-- Pick the FIRST unchecked task (- [ ]) from TASKS.md.
+- Ralph has already selected the current task. Do not choose a task from TASKS.md.
+- The selected task must include Files:, Expectation:, and Test Cases: lines.
+- Before editing, identify the PRD sections and selected task contract lines that authorize the work.
 - Implement that single task only.
 - Inspect the JSON inside the STATUS.md block delimited by "<!-- RALPH_REVIEW_FEEDBACK:START -->" and "<!-- RALPH_REVIEW_FEEDBACK:END -->". If it has "status":"changes_requested", address those requested changes as part of this iteration.
 - Do not modify the RALPH_REVIEW_FEEDBACK block in STATUS.md. Ralph manages that block.
-- Check off that one task (- [x]) in TASKS.md.
-- Update STATUS.md with what you changed and what the next task should be.
+- Inspect the STATUS.md block delimited by "<!-- RALPH_STATIC_GUARD:START -->" and "<!-- RALPH_STATIC_GUARD:END -->". If it reports "Static guard: FAIL", resolve those failures as part of the selected task.
+- Do not modify the RALPH_STATIC_GUARD block in STATUS.md. Ralph manages that block.
+- Touch only implementation files listed in the selected task's Files.
+- Touch operational Ralph files like STATUS.md and .ralph/ files as needed, but do not touch PRD.md or TASKS.md.
+- Every implementation file in the selected task's Files: line must also appear in PRD.md ## Files to touch. The selected task's Files line owns the per-iteration C/M/D marker.
+- Do not modify PRD.md during implementation.
+- Do not reinterpret, simplify, or expand the spec.
+- If an unlisted file or unspecified behavior appears necessary, do not implement it. Update STATUS.md with the spec gap and leave the task unchecked.
+- Implement only the checks listed in the selected task's Test Cases: line, except for direct equivalents required by the target project's test framework.
+- Do not edit TASKS.md. The Ralph runner owns checking and unchecking the selected task.
+- Update STATUS.md with what you changed, but do not choose or rewrite the next task. Ralph owns task progression.
 - Keep STATUS.md concrete, short, and truthful.
-- Record any implementation notes, spec gaps, decisions, tradeoffs, or notable deviations you had to make in STATUS.md.
-- Treat "# Decisions made" and "# Tradeoffs and deviations" as append-only logs. Preserve all existing entries exactly. If you add to either section, add only new "- ..." markdown list items below the existing content.
+- Do not add rationale or departure sections to STATUS.md. PRD.md is authoritative. If the spec blocks implementation, record the blocking spec gap under Known issues and leave the task unchecked.
 - Do not touch other unchecked tasks.
 - If you encounter any code or test issues, fix them and update STATUS.md with what you did to fix them.
-- Do not add tests which simply restate the implementation. These provide zero confidence. Avoid spurious tests. 
+- Do not add tests which simply restate the implementation. These provide zero confidence. Avoid spurious tests.
 - Do not leave known issues unfixed before checking off the task.
 
 Iteration number: ${loopNo}
@@ -143,11 +175,41 @@ If you need to leave notes for the next fresh instance, put them in STATUS.md.
 
 IMPORTANT: Do not mark the task complete while any tests are failing. All tests must pass first, even if the failures look unrelated or pre-existing.
 `;
+
+  if (lastFailedOutput.trim()) {
+    content += `
+Your previous attempt FAILED verification. Here is the raw output:
+
+${lastFailedOutput.trimEnd()}
+
+Fix the issue before proceeding.
+`;
+  }
+
+  return content;
+}
+
+function formatCurrentTask(currentTask: CurrentTask | null): string {
+  if (!currentTask) {
+    return `<CURRENT_TASK>
+None selected.
+</CURRENT_TASK>`;
+  }
+
+  return `<CURRENT_TASK>
+Description: ${currentTask.description}
+Files:
+${currentTask.files.map((file) => `- ${file.path} ${file.op}`).join("\n")}
+Expectation: ${currentTask.expectation}
+Test Cases:
+${currentTask.testCases.map((testCase) => `- ${testCase}`).join("\n")}
+</CURRENT_TASK>`;
 }
 
 export function makeAutoReviewFeedbackPrompt(
   target: string,
   loop: number,
+  currentTask: CurrentTask | null,
   scope: ReviewScope
 ): string {
   return `You are reviewing Ralph loop iteration ${loop}.
@@ -155,12 +217,14 @@ export function makeAutoReviewFeedbackPrompt(
 Your job is to do an adversarial review of the work completed in this iteration after auto-commit.
 
 Review rules:
-- Scope is limited to the project planning context below and the touched files from this iteration.
+- Scope is limited to the selected current task Files list and the PRD below.
+- Touched files outside the selected current task Files list are scope violations.
+- Do not request edits to files outside the selected current task Files list, even if they appear in the diff.
 - Focus on blockers only. Ignore nits, style comments, speculative refactors, and unrelated improvements.
-- Check whether the touched-file changes fully satisfy the task and acceptance criteria.
-- Check whether the touched-file changes are internally consistent with the surrounding code they directly affect.
-- Do not request changes in untouched files. Every requested change must target one of the touched files listed below.
-- Look out for implementation correctness in the scoe
+- Check whether the changes fully satisfy the selected task and acceptance criteria.
+- Check whether the changes are internally consistent with the surrounding code they directly affect.
+- Every requested change must target a file listed in the selected current task Files list.
+- Look out for implementation correctness in scope
 - Look out for spurious tests. 
     - we should NEVER assert mock behavior
     - we should NEVER add test-only methods to production classes
@@ -168,33 +232,27 @@ Review rules:
     - we should NEVER write tests for non-application behaviour
 
 Output contract:
-- Return ONLY valid JSON.
-- Return exactly one compact JSON object and nothing else.
-- Do not include Markdown fences, prose outside JSON, comments, headings, code blocks, or trailing text.
+- Return ONLY the specified format. {"status":"changes_requested | approved","changes":[{"file":"relative/path","line":123,"requested_change":"Concrete blocker to fix."}]}
+- Return exactly one compact object and nothing else.
+- Do not include text, prose outside the specified format, comments, headings, code blocks, or trailing text or bullet points.
 - If there are no blocking changes, return: {"status":"approved","changes":[]}
 - If there are blocking changes, return: {"status":"changes_requested","changes":[{"file":"relative/path","line":123,"requested_change":"Concrete blocker to fix."}]}
 
 Touched files:
 ${formatTouchedFiles(scope.touchedFiles)}
 
+${formatCurrentTask(currentTask)}
+
 Iteration diff:
 \`\`\`diff
 ${scope.diff || "# No iteration diff was captured."}
 \`\`\`
 
-Project planning artifacts are embedded below. Use these embedded copies instead of reading PRD.md, TASKS.md, or STATUS.md via tool calls.
+The PRD is embedded below. Use this embedded copy and the selected current task instead of reading PRD.md, TASKS.md, or STATUS.md via tool calls.
 
 <PRD>
 ${readProjectFile(target, "PRD.md")}
-</PRD>
-
-<TASKS>
-${readProjectFile(target, "TASKS.md")}
-</TASKS>
-
-<STATUS>
-${readProjectFile(target, "STATUS.md")}
-</STATUS>`;
+</PRD>`;
 }
 
 function formatTouchedFiles(files: string[]): string {

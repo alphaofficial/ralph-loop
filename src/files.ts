@@ -37,7 +37,7 @@ export function ensureGitExcludes(target: string) {
   }
 }
 
-export function ensureTemplates(target: string) {
+export function ensureTemplates(target: string, options: { resetStatus?: boolean } = {}) {
   mkdirSync(join(target, ".ralph"), { recursive: true, mode: 0o700 });
 
   const files: [string, string][] = [
@@ -49,6 +49,7 @@ export function ensureTemplates(target: string) {
   for (const [path, template] of files) {
     if (!existsSync(path)) writeFileSync(path, template);
   }
+  if (options.resetStatus) writeFileSync(join(target, "STATUS.md"), STATUS_TEMPLATE);
 
   ensureGitExcludes(target);
 }
@@ -63,6 +64,28 @@ export function updateReviewFeedbackBlock(statusFile: string, content: string) {
   const START = "<!-- RALPH_REVIEW_FEEDBACK:START -->";
   const END = "<!-- RALPH_REVIEW_FEEDBACK:END -->";
   updateManagedBlock(statusFile, START, END, content);
+}
+
+export function updateStaticGuardBlock(statusFile: string, content: string) {
+  const START = "<!-- RALPH_STATIC_GUARD:START -->";
+  const END = "<!-- RALPH_STATIC_GUARD:END -->";
+  updateManagedBlock(statusFile, START, END, content);
+}
+
+export function updateStatusNextStep(statusFile: string, content: string) {
+  const heading = "# Next step";
+  const replacement = `${heading}\n${content.trimEnd()}`;
+  let text = existsSync(statusFile) ? readFileSync(statusFile, "utf-8") : "";
+  const pattern = /# Next step\n[\s\S]*?(?=\n# |\n<!-- RALPH_|$)/;
+
+  if (pattern.test(text)) {
+    text = text.replace(pattern, replacement);
+  } else {
+    if (text && !text.endsWith("\n")) text += "\n";
+    text += `${text ? "\n" : ""}${replacement}\n`;
+  }
+
+  writeFileSync(statusFile, text);
 }
 
 function updateManagedBlock(statusFile: string, start: string, end: string, content: string) {

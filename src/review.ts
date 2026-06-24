@@ -5,12 +5,25 @@ import {
   makeAutoReviewFeedbackPrompt,
   type ReviewScope,
 } from "./prompts";
+import type { CurrentTask } from "./task-state";
 import { err, log, startSpinner } from "./ui";
 
+/** Runs auto review after commit step.
+ * The auto review will run the provider with the last commit's diff and touched files.
+ * If the auto review fails, it will revert the last commit and write the failure reason to STATUS.md.
+ * If the auto review passes, it will write the feedback to STATUS.md.
+ * @param provider The provider to use for auto review.
+ * @param target The target directory of the project.
+ * @param loop The current loop number.
+ * @param scope The review scope containing the diff and touched files.
+ * @param model Optional model to use for the provider.
+ * @returns A promise that resolves to true if the auto review passed, false otherwise.
+ */
 export async function runAutoReviewFeedback(
   provider: Provider,
   target: string,
   loop: number,
+  currentTask: CurrentTask,
   scope: ReviewScope,
   model?: string
 ): Promise<boolean> {
@@ -26,7 +39,7 @@ export async function runAutoReviewFeedback(
     const result = await captureProvider(
       provider,
       target,
-      makeAutoReviewFeedbackPrompt(target, loop, scope),
+      makeAutoReviewFeedbackPrompt(target, loop, currentTask, scope),
       model
     );
     stopSpinner();

@@ -76,16 +76,20 @@ ralph opencode ~/code/my-app
 ## How it works
 ```
 while (unchecked tasks in TASKS.md) {
+  select the first unchecked task
   spawn fresh AI agent
-  agent picks ONE unchecked task, implements it, checks it off
+  agent implements the selected task without editing TASKS.md
+  run static guardrails to ensure agent follows spec
   run verification command
-  write result to STATUS.md
   run auto review gate
-  write review JSON to STATUS.md for the next iteration
 }
 ```
 
 Each iteration gets a fresh context — no memory of previous runs. Progress is tracked in files and git history, not in the AI's context window.
+
+Ralph selects the first unchecked task in `TASKS.md`, passes that current task to the provider, and owns task checkbox state: providers must not edit `TASKS.md`; Ralph checks the selected task only after static guard and verification pass and unchecks it on guard failure.
+
+`PRD.md` is the source-of-truth implementation contract. `TASKS.md` slices that contract into one iteration at a time. The static guard validates provider changes against the runner-selected current task and `PRD.md`. Ralph fails an iteration before verification or auto-commit if implementation files changed outside the selected task's `Files:` line, if that task file list is outside `PRD.md`'s `## Files to touch` tree, if task test cases are not listed in `PRD.md`, if `TASKS.md` changes during provider execution, or if `PRD.md` is modified during implementation.
 
 Auto-review runs once after each committed iteration. If the reviewer exits unsuccessfully or returns empty output, Ralph reverts the commit and records unavailable review feedback in `STATUS.md`. Otherwise, Ralph records the reviewer output in `STATUS.md` so the next normal iteration can address it.
 
@@ -149,6 +153,8 @@ ralph claude
 Ralph runs iterations until tasks are complete, committing successful iterations automatically.
 
 ## Example PRD
+The `Files to touch` section uses standard `tree` output format. Use `.` for the repository root. Directory rows have no marker; file rows end with `C`, `M`, or `D`.
+
 ```md
 # Goal
 Add Stripe subscriptions.
@@ -158,10 +164,38 @@ Add Stripe subscriptions.
 - handle webhook updates
 - show current plan in billing UI
 
-## Technical requirements
-- add checkout API route and webhook handler using existing auth and billing modules
+## Implementation details
+- add checkout API route using the existing authenticated API route pattern
+- add webhook handler using the existing raw-body middleware and billing module boundaries
 - persist Stripe customer/subscription IDs in the existing user billing data shape
-- verify webhook signatures and keep billing UI compatible with current plan display state
+- verify webhook signatures before mutating billing state
+- keep billing UI compatible with the current plan display state
+
+## Files to touch
+.
+├── src
+│   ├── api
+│   │   └── billing
+│   │       ├── checkout.ts C
+│   │       └── webhook.ts C
+│   ├── billing
+│   │   └── stripe.ts M
+│   └── ui
+│       └── BillingPanel.tsx M
+└── tests
+    └── billing.test.ts C
+
+## Test cases
+- checkout route creates a Stripe checkout session for the authenticated user
+- webhook rejects invalid signatures
+- webhook stores subscription status updates
+- billing UI renders the current plan from persisted billing state
+
+## Guardrails
+- PRD.md is the source of truth for the implementation
+- do not add unlisted behavior, files, dependencies, abstractions, or tests
+- do not touch files outside the Files to touch tree except TASKS.md, STATUS.md, and .ralph/*
+- record spec gaps in STATUS.md instead of guessing
 
 ## Constraints
 - use existing stack patterns
@@ -174,11 +208,20 @@ Add Stripe subscriptions.
 
 ## Example TASKS
 ```md
-- [ ] inspect current billing code
-- [ ] add backend checkout flow
-- [ ] add webhook handler
-- [ ] update billing UI
-- [ ] verify with tests
+- [ ] Add backend checkout flow.
+Files: src/api/billing/checkout.ts C, src/billing/stripe.ts M, tests/billing.test.ts C
+Expectation: Authenticated users can create Stripe checkout sessions using the existing billing module shape.
+Test Cases: checkout route creates a Stripe checkout session for the authenticated user
+
+- [ ] Add signed webhook handling.
+Files: src/api/billing/webhook.ts C, src/billing/stripe.ts M, tests/billing.test.ts C
+Expectation: Stripe webhook events update persisted billing state only after signature verification.
+Test Cases: webhook rejects invalid signatures, webhook stores subscription status updates
+
+- [ ] Update billing UI plan display.
+Files: src/ui/BillingPanel.tsx M, tests/billing.test.ts C
+Expectation: Billing UI shows the current plan from persisted billing state.
+Test Cases: billing UI renders the current plan from persisted billing state
 ```
 
 ## Example STATUS
@@ -188,12 +231,6 @@ Billing work not started yet.
 
 # Last attempt
 N/A
-
-# Decisions made
-None yet.
-
-# Tradeoffs and deviations
-None yet.
 
 # Known issues
 None.

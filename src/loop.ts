@@ -1,18 +1,77 @@
 import { join } from "node:path";
 import { writeFileSync, readFileSync } from "node:fs";
 import { log, err, startSpinner, formatDuration } from "./ui";
-import {
-  ensureTemplates,
-  updateRunnerBlock,
-} from "./files";
+import { ensureTemplates, readProjectFile, updateRunnerBlock, updateStaticGuardBlock, updateStatusNextStep } from "./files";
 import { invokeProvider, type Provider } from "./providers";
+import {
+  parseGitStatusEntries,
+  staticGuard,
+} from "./spec-guard";
 import {
   lastCommitReviewScope,
   runAutoReviewFeedback,
 } from "./review";
+import { checkTask, getTask, uncheckTask as uncheckSelectedTask, type CurrentTask } from "./task-state";
 import { makeLoopPrompt } from "./prompts";
 
+export const makePrompt = makeLoopPrompt;
+
 export const SKIP = Symbol("skip");
+
+function writeUncheckedTask(target: string, currentTask: CurrentTask): void {
+  const tasksPath = join(target, "TASKS.md");
+  const latestTasks = readFileSync(tasksPath, "utf-8");
+  writeFileSync(tasksPath, uncheckSelectedTask(latestTasks, currentTask));
+}
+
+function tryUncheckCurrentTask(target: string, currentTask: CurrentTask): boolean {
+  try {
+    writeUncheckedTask(target, currentTask);
+    updateNextStepFromTasks(target);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function updateNextStepFromTasks(target: string): void {
+  const nextTask = getTask(readProjectFile(target, "TASKS.md"));
+  updateStatusNextStep(
+    join(target, "STATUS.md"),
+    nextTask ? `Next task: ${nextTask.description}` : "All tasks complete."
+  );
+}
+
+export function handleStaticGuardFailure(
+  target: string,
+  currentTask: CurrentTask,
+  staticSummary: string
+): string {
+  let summary = staticSummary;
+  try {
+    writeUncheckedTask(target, currentTask);
+    updateNextStepFromTasks(target);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    summary += `${summary.endsWith("\n") ? "" : "\n"}Task rollback failed: ${message}\n`;
+  }
+
+  updateStaticGuardBlock(join(target, "STATUS.md"), summary);
+  return summary;
+}
+
+export function updateTaskAfterVerification(
+  target: string,
+  currentTask: CurrentTask,
+  code: number | typeof SKIP
+): boolean {
+  if (code !== 0 && code !== SKIP) return false;
+
+  const tasksPath = join(target, "TASKS.md");
+  const latestTasks = readFileSync(tasksPath, "utf-8");
+  writeFileSync(tasksPath, checkTask(latestTasks, currentTask));
+  return true;
+}
 
 function commandOutput(proc: { stdout?: Uint8Array; stderr?: Uint8Array }): string {
   const decoder = new TextDecoder();
@@ -55,14 +114,13 @@ export async function runCheck(
 }
 
 export function allTasksComplete(target: string): boolean {
+  let content: string;
   try {
-    const content = readFileSync(join(target, "TASKS.md"), "utf-8");
-    const tasks = content.split("\n").filter((line) => /^- \[[ x]\]/.test(line));
-    if (tasks.length === 0) return true;
-    return tasks.every((line) => line.startsWith("- [x]"));
+    content = readFileSync(join(target, "TASKS.md"), "utf-8");
   } catch {
     return true;
   }
+  return getTask(content) === null;
 }
 
 function isGitRepo(target: string): boolean {
@@ -130,57 +188,21 @@ export async function autoCommit(target: string, loop: number, canCommit = isGit
   }
 }
 
-type TaskSnapshot = {
-  index: number;
-  text: string;
-};
-
-function firstUncheckedTask(target: string): TaskSnapshot | null {
-  let content: string;
-  try {
-    content = readFileSync(join(target, "TASKS.md"), "utf-8");
-  } catch {
-    return null;
-  }
-
-  const index = content.split("\n").findIndex((line) => line.startsWith("- [ ] "));
-  if (index === -1) return null;
-
-  return {
-    index,
-    text: content.split("\n")[index].slice("- [ ] ".length),
-  };
+export function gitStatusEntries(target: string, canInspect = isGitRepo(target)) {
+  if (!canInspect) return [];
+  const proc = Bun.spawnSync(["git", "-C", target, "status", "--porcelain=v1", "-z", "--untracked-files=all"], {
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  if (proc.exitCode !== 0) return [];
+  return parseGitStatusEntries(new TextDecoder().decode(proc.stdout));
 }
 
-function uncheckTask(target: string, task: TaskSnapshot | null): boolean {
-  if (!task) return false;
-
-  const tasksFile = join(target, "TASKS.md");
-  let content: string;
-  try {
-    content = readFileSync(tasksFile, "utf-8");
-  } catch {
-    return false;
-  }
-
-  const lines = content.split("\n");
-  const checked = `- [x] ${task.text}`;
-  const unchecked = `- [ ] ${task.text}`;
-
-  if (lines[task.index] === checked) {
-    lines[task.index] = unchecked;
-    writeFileSync(tasksFile, lines.join("\n"));
-    return true;
-  }
-
-  const movedIndex = lines.findIndex((line) => line === checked);
-  if (movedIndex !== -1) {
-    lines[movedIndex] = unchecked;
-    writeFileSync(tasksFile, lines.join("\n"));
-    return true;
-  }
-
-  return false;
+function staticGuardSummary(failures: readonly string[]): string {
+  if (failures.length === 0) return "Static guard: PASS\n";
+  return `Static guard: FAIL
+${failures.map((failure) => `- ${failure}`).join("\n")}
+`;
 }
 
 type LoopContext = {
@@ -196,17 +218,22 @@ type LoopContext = {
 type LoopState = {
   loop: number;
   consecutiveFailures: number;
+  lastFailedOutput: string;
 };
 
-type IterationResult = { completed: boolean };
+type IterationResult = { completed: boolean; lastFailedOutput?: string };
 
 async function runIteration(ctx: LoopContext, state: LoopState): Promise<IterationResult> {
   const iterationStart = Date.now();
   const total = formatDuration(Date.now() - ctx.loopStart);
   log(`loop ${state.loop} (${ctx.provider}) · total ${total}${state.consecutiveFailures > 0 ? ` · failure ${state.consecutiveFailures}/${ctx.maxLoops}` : ""}`);
 
-  const taskForFailureRecovery = firstUncheckedTask(ctx.target);
-  const prompt = makeLoopPrompt(ctx.target, ctx.checkCmd, state.loop, ctx.checkDisabled);
+  const prdBefore = readProjectFile(ctx.target, "PRD.md");
+  const tasksBefore = readProjectFile(ctx.target, "TASKS.md");
+  const currentTask = getTask(tasksBefore);
+  if (!currentTask) return { completed: true };
+
+  const prompt = makeLoopPrompt(ctx.target, ctx.checkCmd, state.loop, currentTask, state.lastFailedOutput, ctx.checkDisabled);
 
   const stopProvider = startSpinner(`🌀 ${ctx.provider} is working · loop ${state.loop}`);
   try {
@@ -216,6 +243,25 @@ async function runIteration(ctx: LoopContext, state: LoopState): Promise<Iterati
     err(`failed to run ${ctx.provider}: ${e instanceof Error ? e.message : e}`);
   }
   stopProvider();
+
+  const changedEntries = gitStatusEntries(ctx.target, ctx.canAutoCommit);
+  const staticResult = staticGuard({
+    prd: prdBefore,
+    currentTask,
+    changedEntries,
+  });
+  const staticSummary = staticGuardSummary(staticResult.failures);
+  const staticOut = join(ctx.target, ".ralph", "static-guard-summary.txt");
+
+  if (!staticResult.passed) {
+    const staticSummaryWithRollbackNotes = handleStaticGuardFailure(ctx.target, currentTask, staticSummary);
+    writeFileSync(staticOut, staticSummaryWithRollbackNotes, { mode: 0o600 });
+    const iterTime = formatDuration(Date.now() - iterationStart);
+    log(`⚠️ static guard failed · ${iterTime}`);
+    return { completed: false, lastFailedOutput: staticSummaryWithRollbackNotes };
+  }
+  writeFileSync(staticOut, staticSummary, { mode: 0o600 });
+  updateStaticGuardBlock(join(ctx.target, "STATUS.md"), staticSummary);
 
   const summaryFile = join(ctx.target, ".ralph", "check-summary.txt");
   const checkOut = join(ctx.target, ".ralph", "check-output.txt");
@@ -244,22 +290,29 @@ async function runIteration(ctx: LoopContext, state: LoopState): Promise<Iterati
   writeFileSync(summaryFile, summary, { mode: 0o600 });
   updateRunnerBlock(join(ctx.target, "STATUS.md"), summary);
 
-  if (code === 0 || code === SKIP) {
+  if (updateTaskAfterVerification(ctx.target, currentTask, code)) {
+    updateNextStepFromTasks(ctx.target);
     const committed = await autoCommit(ctx.target, state.loop, ctx.canAutoCommit);
     if (committed) {
       const reviewPassed = await runAutoReviewFeedback(
         ctx.provider,
         ctx.target,
         state.loop,
+        currentTask,
         lastCommitReviewScope(ctx.target),
         process.env.RALPH_MODEL
       );
-      if (!reviewPassed) return { completed: false };
+      if (!reviewPassed) {
+        if (tryUncheckCurrentTask(ctx.target, currentTask)) {
+          log("reopened task after failed auto review");
+        }
+        return { completed: false };
+      }
     }
     return { completed: true };
   }
 
-  if (uncheckTask(ctx.target, taskForFailureRecovery)) {
+  if (tryUncheckCurrentTask(ctx.target, currentTask)) {
     log("reopened task after failed verification");
   }
   return { completed: false };
@@ -277,7 +330,8 @@ export async function mainLoop(
 
   if (dryRun) {
     log("dry run, not invoking " + provider);
-    console.log(makeLoopPrompt(target, checkCmd, 1, checkDisabled));
+    const currentTask = getTask(readProjectFile(target, "TASKS.md"));
+    console.log(makeLoopPrompt(target, checkCmd, 1, currentTask, "", checkDisabled));
     return 0;
   }
 
@@ -290,17 +344,19 @@ export async function mainLoop(
     canAutoCommit: isGitRepo(target),
     loopStart: Date.now(),
   };
-  const state: LoopState = { loop: 0, consecutiveFailures: 0 };
+  const state: LoopState = { loop: 0, consecutiveFailures: 0, lastFailedOutput: "" };
 
   while (!allTasksComplete(ctx.target)) {
     state.loop++;
     const result = await runIteration(ctx, state);
     if (result.completed) {
       state.consecutiveFailures = 0;
+      state.lastFailedOutput = "";
       continue;
     }
 
     state.consecutiveFailures++;
+    state.lastFailedOutput = result.lastFailedOutput ?? "";
     if (allTasksComplete(ctx.target)) {
       err("iteration failed but no unchecked tasks remain");
       return 1;
