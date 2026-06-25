@@ -40,12 +40,13 @@ ${clarifications}
    (full technical requirements: exact implementation approach, affected modules, interfaces/APIs/CLI flags/file formats/events/data contracts, file-level responsibilities, error handling, compatibility/security/performance constraints, integration/migration notes, and any required pseudocode or examples)
 
    ## Files to touch
-   (complete implementation allowlist for the whole change, formatted as a nested Markdown list; directory rows end with /, and every file row ends with C=create, M=modify, or D=delete)
+   (complete implementation allowlist for the whole change, formatted as a nested Markdown list; directory rows end with /).
    Example:
    - src/
-     - feature.ts C
-     - existing.ts M
-   - README.md M
+     - feature.ts
+     - existing.ts
+   - README.md
+
 
    ## Test cases
    (bulleted list of all required tests or verification checks for the whole change)
@@ -108,6 +109,10 @@ Rules:
 - Add requirement that after all steps are done, it is properly tested or verified before declaring the work complete.
 - Do NOT create any other files.
 - NEVER run git write commands (git add, git commit, git push). Only git read commands are permitted (git log, git diff, git show).
+
+
+IMPORTANT:
+The Files to touch  section in PRD is very key to the entire process as we have a static guard that will halt the program if files listed here is not accurate or not aligned with each task. Be very thorough with the files to touch and the tasks.md Files list. Ensure that executable task and the changes it will create will touch exactly the files listed. And the files listed aligns with the broader files tree in Files to touch. We do not want the loop halting because of this misalignment.
 `;
 }
 
