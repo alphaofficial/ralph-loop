@@ -355,22 +355,22 @@ export async function mainLoop(
       state.lastFailedOutput = "";
 
       // if tasks are completed at this stage
-      // run the goalChecks to continue or complete
+      // run the QA to continue or complete
       if (allTasksComplete(ctx.target)) {
-        const tasksBeforeGoalCheck = readFileSync(join(ctx.target, "TASKS.md"), "utf-8");
-        const goalCheckPrompt = generateQAPrompt(ctx.target);
-        const stopProvider = startSpinner(`🔍 validating against objectives`);
+        const tasksBeforeQA = readFileSync(join(ctx.target, "TASKS.md"), "utf-8");
+        const qaPrompt = generateQAPrompt(ctx.target);
+        const stopProvider = startSpinner("🔍 QA started");
         try {
-          await invokeProvider(ctx.provider, ctx.target, goalCheckPrompt, process.env.RALPH_MODEL);
+          await invokeProvider(ctx.provider, ctx.target, qaPrompt, process.env.RALPH_MODEL);
         } catch (e) {
-          err(`goal check failed: ${e instanceof Error ? e.message : e}`);
+          err(`⚠️ QA failed: ${e instanceof Error ? e.message : e}`);
         } finally {
           stopProvider();
         }
 
-        const tasksAfterGoalCheck = readFileSync(join(ctx.target, "TASKS.md"), "utf-8");
-        if (tasksAfterGoalCheck !== tasksBeforeGoalCheck) {
-          log(`⚠️ validation found gaps, added tasks to TASKS.md`);
+        const tasksAfterQA = readFileSync(join(ctx.target, "TASKS.md"), "utf-8");
+        if (tasksAfterQA !== tasksBeforeQA) {
+          log(`⚠️ QA found issues, added tasks to TASKS.md`);
           continue;
         }
       }

@@ -276,37 +276,43 @@ export function generateQAPrompt(target: string): string {
   return `You are performing QA for Ralph.
 
 ## Your Task
-Compare the code implementation against the Goal statement in PRD.md. 
-If there are gaps between what the Goal describes and what is implemented, generate tasks to fill those gaps.
+You are a QA engineer reviewing the implementation. Compare the code against the Goal in PRD.md and manually verify that changes work. If you find gaps, missing pieces, or bugs, add tasks to TASKS.md.
 
-## PRD.md Goal Section
+## PRD.md Goal
 ${extractGoalSection(prd)}
 
-## Instructions
-1. Read the implementation files in this project
-2. Compare code implementation against the Goal section
-3. Review implementation for correctness, slop, cruft and deviations from the goal
-4. Check that code implementation actually works.
-5. If gaps exist, write "GOAL_CHECK_TASKS_ADDED" followed by the new tasks, then append tasks to TASKS.md with this format:
-   - [ ] {task description}
-     - Files: {file path that exists in files to touch} {C|M}
-     - Expectation: {what should be implemented}
-     - Test Cases: goal check verification
-6. If no gaps, write "GOAL_CHECK_PASSED" to stdout and exit
+## QA Process
+1. Read the implementation files thoroughly
+2. Trace through the code to understand how it works
+3. Manually verify the implementation actually works (run the app, test functionality)
+4. Check for edge cases, error handling, and missing pieces
+5. If you find issues, append tasks to TASKS.md:
+   - [ ] {issue description}
+     - Files: {file path for the change that also exist in PRD} {C|M}
+     - Expectation: {what should be fixed or added}
+     - Test Cases: QA verification
 
-## Ensure you do these as a checklist before confirming it actually works
-- Manually verify that implementation works, based on verified evidenece and facts. Ensure to clean up your verification artifacts or processes. For example: if goal is to implement an upload. Verify that you are able to actually upload a file. Another example: if implementation is to be able to record on click of a button, run the app and verify that it works. That is the kind of evidence based manual verification we are looking for!
-- Do not add or make any changes to the codebase. If you need to write scripts to verify some functionality, do it outside of the codebase or in a tmp directory or in memory and ensure to clean up.
-- If project has UI check that UI is functional, check buttons work as expected, check forms work
+## QA Checklist
+- Run the app and verify core functionality works
+- Test edge cases and error conditions
+- If UI exists, verify buttons, forms, and interactions work
+- Check for memory leaks, race conditions, or performance issues
+- Do NOT rely on existing tests - verify manually
+- Manually verify that implementation works, based on verified evidenece and facts. 
+  - For example: if goal is to implement a document upload. Verify that you are able to actually upload a file from the UI. 
+  - Another example: if implementation is to be able to record on click of a button, run the app and verify that it works. 
+  - If project has UI check that UI is functional, check buttons work as expected, check forms work
+  That is the kind of evidence based manual verification we are looking for!
 
-## Important notes
-- Only append tasks, do not modify existing checked tasks
-- Do not write uncertain placeholders such as TBD, confirm, investigate, inspect, determine, narrow, or "exact behavior to be checked".
-- Each task must be an executable implementation or verification tasks based on the gaps and following existing patterns.
-- Do NOT touch any other files.
-- NEVER run git write commands (git add, git commit, git push). Only git read commands are permitted (git log, git diff, git show).
-- Do NOT rely on tests to confirm if code implementation works. Instead manually verify if implementation works. 
-- If necessary run the app and verify functionality manually or using playwright where necessary. 
-- Trace the implementation to deeply understand how its working
+## Important
+- Only append to TASKS.md, don't modify existing checked tasks
+- Be thorough
+- Do not write placeholder tasks like "confirm X works" - be specific
+- Do NOT touch any files except appending to TASKS.md
+- Do NOT run git write commands (git add, commit, push)
+- Do NOT touch any other files
+- If you need to write scripts to automate verifications, do it in a tpm directory and clean up afterwards
+- When you run app to do verification do not leave it running. clean up any process, tmp stuff you run
+- Leave the codebase exactly as you found it.
 `;
 }

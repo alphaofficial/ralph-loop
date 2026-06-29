@@ -56,6 +56,11 @@ export function parsePrdFilesToTouch(prd: string): FileContract[] {
 
     if (!match) continue;
 
+    if (line.endsWith("/")) {
+      stack.push({ indent, path: line });
+      continue;
+    }
+
     const parent = stack.map((entry) => entry.path).join("");
     files.push({ path: normalizePath(`${parent}${match[1].trim()}`) });
   }
@@ -87,7 +92,7 @@ export function staticGuard(input: StaticGuardInput): StaticGuardResult {
   const failures: string[] = [];
   const prdFiles = parsePrdFilesToTouch(input.prd);
   const task = input.currentTask;
-  const prdMap = contractMap(prdFiles, "PRD ## Files to touch", failures);
+  const prdSet = buildFileSet(prdFiles, "PRD ## Files to touch", failures);
   const taskMap = contractMap(task.files, "selected task Files", failures);
 
   if (prdFiles.length === 0) {
@@ -98,7 +103,7 @@ export function staticGuard(input: StaticGuardInput): StaticGuardResult {
   if (task.testCases.length === 0) failures.push("Selected task is missing a valid Test Cases: line.");
 
   for (const [path, op] of taskMap) {
-    if (!prdMap.has(path)) {
+    if (!prdSet.has(path)) {
       failures.push(`${path} is listed in the task but not in PRD.md ## Files to touch.`);
     }
   }
@@ -138,7 +143,7 @@ function extractSection(markdown: string, title: string): string {
 }
 
 function contractMap(
-  files: readonly FileContract[],
+  files: readonly TaskFileContract[],
   label: string,
   failures: string[]
 ): Map<string, FileOp> {
@@ -152,8 +157,29 @@ function contractMap(
       failures.push(`${label} lists ${file.path} more than once.`);
       continue;
     }
+    map.set(file.path, file.op);
   }
   return map;
+}
+
+function buildFileSet(
+  files: readonly FileContract[],
+  label: string,
+  failures: string[]
+): Set<string> {
+  const set = new Set<string>();
+  for (const file of files) {
+    if (!file.path) {
+      failures.push(`${label} contains an invalid file entry.`);
+      continue;
+    }
+    if (set.has(file.path)) {
+      failures.push(`${label} lists ${file.path} more than once.`);
+      continue;
+    }
+    set.add(file.path);
+  }
+  return set;
 }
 
 function parseTreeLine(rawLine: string): { indent: number; line: string; branch: boolean } | null {
