@@ -2,7 +2,9 @@ import type { CurrentTask, TaskFileContract, TaskFileOp } from "./task-state";
 
 export type FileOp = TaskFileOp;
 
-export type FileContract = TaskFileContract;
+export type FileContract = {
+  path: string;
+};
 
 export type StaticGuardInput = {
   prd: string;
@@ -39,7 +41,7 @@ export function parsePrdFilesToTouch(prd: string): FileContract[] {
     const { indent, line, branch } = parsedLine;
     while (stack.length && stack[stack.length - 1].indent >= indent) stack.pop();
 
-    const match = line.match(/^(.+?)\s+([CMD])$/);
+    const match = line.match(/^(.+?)\s*$/);
     if (!match && !branch && stack.length === 0) {
       if (line === ".") continue;
       stack.push({ indent: -1, path: `${line.replace(/\/$/, "")}/` });
@@ -55,7 +57,7 @@ export function parsePrdFilesToTouch(prd: string): FileContract[] {
     if (!match) continue;
 
     const parent = stack.map((entry) => entry.path).join("");
-    files.push({ path: normalizePath(`${parent}${match[1].trim()}`), op: match[2] as FileOp });
+    files.push({ path: normalizePath(`${parent}${match[1].trim()}`) });
   }
 
   return files;
@@ -142,7 +144,7 @@ function contractMap(
 ): Map<string, FileOp> {
   const map = new Map<string, FileOp>();
   for (const file of files) {
-    if (!file.path || !FILE_OPS.has(file.op)) {
+    if (!file.path) {
       failures.push(`${label} contains an invalid file entry.`);
       continue;
     }
@@ -150,7 +152,6 @@ function contractMap(
       failures.push(`${label} lists ${file.path} more than once.`);
       continue;
     }
-    map.set(file.path, file.op);
   }
   return map;
 }

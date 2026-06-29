@@ -13,6 +13,7 @@ import {
 } from "./review";
 import { checkTask, getTask, uncheckTask as uncheckSelectedTask, type CurrentTask } from "./task-state";
 import { makeLoopPrompt } from "./prompts";
+import { generateQAPrompt } from "./prompts";
 
 export const makePrompt = makeLoopPrompt;
 
@@ -352,6 +353,28 @@ export async function mainLoop(
     if (result.completed) {
       state.consecutiveFailures = 0;
       state.lastFailedOutput = "";
+
+      // if tasks are completed at this stage
+      // run the goalChecks to continue or complete
+      if (allTasksComplete(ctx.target)) {
+        const tasksBeforeGoalCheck = readFileSync(join(ctx.target, "TASKS.md"), "utf-8");
+        const goalCheckPrompt = generateQAPrompt(ctx.target);
+        const stopProvider = startSpinner(`🔍 validating against objectives`);
+        try {
+          await invokeProvider(ctx.provider, ctx.target, goalCheckPrompt, process.env.RALPH_MODEL);
+        } catch (e) {
+          err(`goal check failed: ${e instanceof Error ? e.message : e}`);
+        } finally {
+          stopProvider();
+        }
+
+        const tasksAfterGoalCheck = readFileSync(join(ctx.target, "TASKS.md"), "utf-8");
+        if (tasksAfterGoalCheck !== tasksBeforeGoalCheck) {
+          log(`⚠️ validation found gaps, added tasks to TASKS.md`);
+          continue;
+        }
+      }
+
       continue;
     }
 

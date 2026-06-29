@@ -1,4 +1,5 @@
 import { readProjectFile } from "./files";
+import { extractGoalSection } from "./files";
 import type { CurrentTask } from "./task-state";
 
 export const MAX_CLARIFYING_QUESTIONS = 5;
@@ -268,4 +269,44 @@ ${readProjectFile(target, "PRD.md")}
 function formatTouchedFiles(files: string[]): string {
   if (files.length === 0) return "- none captured";
   return files.map((file) => `- ${file}`).join("\n");
+}
+export function generateQAPrompt(target: string): string {
+  const prd = readProjectFile(target, "PRD.md");
+
+  return `You are performing QA for Ralph.
+
+## Your Task
+Compare the code implementation against the Goal statement in PRD.md. 
+If there are gaps between what the Goal describes and what is implemented, generate tasks to fill those gaps.
+
+## PRD.md Goal Section
+${extractGoalSection(prd)}
+
+## Instructions
+1. Read the implementation files in this project
+2. Compare code implementation against the Goal section
+3. Review implementation for correctness, slop, cruft and deviations from the goal
+4. Check that code implementation actually works.
+5. If gaps exist, write "GOAL_CHECK_TASKS_ADDED" followed by the new tasks, then append tasks to TASKS.md with this format:
+   - [ ] {task description}
+     - Files: {file path that exists in files to touch} {C|M}
+     - Expectation: {what should be implemented}
+     - Test Cases: goal check verification
+6. If no gaps, write "GOAL_CHECK_PASSED" to stdout and exit
+
+## Ensure you do these as a checklist before confirming it actually works
+- Manually verify that implementation works, based on verified evidenece and facts. Ensure to clean up your verification artifacts or processes. For example: if goal is to implement an upload. Verify that you are able to actually upload a file. Another example: if implementation is to be able to record on click of a button, run the app and verify that it works. That is the kind of evidence based manual verification we are looking for!
+- Do not add or make any changes to the codebase. If you need to write scripts to verify some functionality, do it outside of the codebase or in a tmp directory or in memory and ensure to clean up.
+- If project has UI check that UI is functional, check buttons work as expected, check forms work
+
+## Important notes
+- Only append tasks, do not modify existing checked tasks
+- Do not write uncertain placeholders such as TBD, confirm, investigate, inspect, determine, narrow, or "exact behavior to be checked".
+- Each task must be an executable implementation or verification tasks based on the gaps and following existing patterns.
+- Do NOT touch any other files.
+- NEVER run git write commands (git add, git commit, git push). Only git read commands are permitted (git log, git diff, git show).
+- Do NOT rely on tests to confirm if code implementation works. Instead manually verify if implementation works. 
+- If necessary run the app and verify functionality manually or using playwright where necessary. 
+- Trace the implementation to deeply understand how its working
+`;
 }

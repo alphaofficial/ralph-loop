@@ -88,6 +88,15 @@ export function updateStatusNextStep(statusFile: string, content: string) {
   writeFileSync(statusFile, text);
 }
 
+export function extractGoalSection(prd: string): string {
+  const lines = prd.split("\n");
+  const goalIndex = lines.findIndex((l) => l.trim().toLowerCase() === "# goal");
+  if (goalIndex === -1) return "";
+
+  const endIndex = lines.findIndex((l, i) => i > goalIndex && /^##\s+/.test(l));
+  return lines.slice(goalIndex, endIndex === -1 ? undefined : endIndex).join("\n");
+}
+
 function updateManagedBlock(statusFile: string, start: string, end: string, content: string) {
   const block = `${start}\n${content.trimEnd()}\n${end}`;
 
