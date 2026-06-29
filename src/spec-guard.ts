@@ -159,6 +159,7 @@ function contractMap(
       failures.push(`${label} lists ${file.path} more than once.`);
       continue;
     }
+    map.set(file.path, file.op);
   }
   return map;
 }
