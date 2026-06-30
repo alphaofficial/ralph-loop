@@ -1,5 +1,4 @@
-import { readProjectFile } from "./files";
-import { extractGoalSection } from "./files";
+import { extractGoalSection, extractQaValidationSection, readProjectFile } from "./files";
 import type { CurrentTask } from "./task-state";
 
 export const MAX_CLARIFYING_QUESTIONS = 5;
@@ -34,8 +33,8 @@ ${clarifications}
    # Goal
    (what done looks like, 1-2 sentences)
 
-   ## Requirements
-   (bulleted list of specific requirements)
+   ## QA requirement validation
+   (bulleted list of bahaviour driven test cases that verify the objectives are met and works end to end as expected)
 
    ## Implementation details
    (full technical requirements: exact implementation approach, affected modules, interfaces/APIs/CLI flags/file formats/events/data contracts, file-level responsibilities, error handling, compatibility/security/performance constraints, integration/migration notes, and any required pseudocode or examples)
@@ -210,7 +209,7 @@ None selected.
   return `<CURRENT_TASK>
 Description: ${currentTask.description}
 Files:
-${currentTask.files.map((file) => `- ${file.path} ${file.op}`).join("\n")}
+${currentTask.files.map((file) => `- ${file.path} ${file.op}${file.annotation ? ` [${file.annotation}]` : ""}`).join("\n")}
 Expectation: ${currentTask.expectation}
 Test Cases:
 ${currentTask.testCases.map((testCase) => `- ${testCase}`).join("\n")}
@@ -272,28 +271,34 @@ function formatTouchedFiles(files: string[]): string {
 }
 export function generateQAPrompt(target: string): string {
   const prd = readProjectFile(target, "PRD.md");
+  const qaValidationItems = extractQaValidationSection(prd).trim() || "No QA requirement validation items were found in PRD.md.";
 
   return `You are performing QA for Ralph.
 
 ## Your Task
-You are a QA engineer reviewing the implementation. Compare the code against the Goal in PRD.md and manually verify that changes work. If you find gaps, missing pieces, or bugs, add tasks to TASKS.md.
+You are a QA engineer reviewing the implementation. Compare the code against the Goal in PRD.md and manually verify that changes work. Explicitly validate each QA requirement validation item before declaring the work complete. If you find gaps, missing pieces, bugs, or failed QA requirement validation items, add tasks to TASKS.md.
 
 ## PRD.md Goal
 ${extractGoalSection(prd)}
+
+## QA Requirement Validation Items
+${qaValidationItems}
 
 ## QA Process
 1. Read the implementation files thoroughly
 2. Trace through the code to understand how it works
 3. Manually verify the implementation actually works (run the app, test functionality)
-4. Check for edge cases, error handling, and missing pieces
-5. If you find issues, append tasks to TASKS.md:
+4. Validate every item listed in QA Requirement Validation Items and record whether each item passed or failed
+5. Check for edge cases, error handling, and missing pieces
+6. If you find issues, append tasks to TASKS.md:
    - [ ] {issue description}
-     - Files: {file path for the change that also exist in PRD} {C|M}
+     - Files: {file path for the change that also exist in PRD} {C|M} [{hotfix|bug|missing}]
      - Expectation: {what should be fixed or added}
      - Test Cases: QA verification
 
 ## QA Checklist
 - Run the app and verify core functionality works
+- Verify each QA Requirement Validation Items entry individually
 - Test edge cases and error conditions
 - If UI exists, verify buttons, forms, and interactions work
 - Check for memory leaks, race conditions, or performance issues

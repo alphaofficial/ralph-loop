@@ -94,6 +94,7 @@ export function staticGuard(input: StaticGuardInput): StaticGuardResult {
   const task = input.currentTask;
   const prdSet = buildFileSet(prdFiles, "PRD ## Files to touch", failures);
   const taskMap = contractMap(task.files, "selected task Files", failures);
+  const annotations = buildAnnotationMap(task.files);
 
   if (prdFiles.length === 0) {
     failures.push("PRD.md is missing a valid ## Files to touch tree.");
@@ -103,7 +104,8 @@ export function staticGuard(input: StaticGuardInput): StaticGuardResult {
   if (task.testCases.length === 0) failures.push("Selected task is missing a valid Test Cases: line.");
 
   for (const [path, op] of taskMap) {
-    if (!prdSet.has(path)) {
+    const annotation = annotations.get(path);
+    if (!prdSet.has(path) && !annotation) {
       failures.push(`${path} is listed in the task but not in PRD.md ## Files to touch.`);
     }
   }
@@ -180,6 +182,18 @@ function buildFileSet(
     set.add(file.path);
   }
   return set;
+}
+
+function buildAnnotationMap(
+  files: readonly TaskFileContract[]
+): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const file of files) {
+    if (file.annotation) {
+      map.set(file.path, file.annotation);
+    }
+  }
+  return map;
 }
 
 function parseTreeLine(rawLine: string): { indent: number; line: string; branch: boolean } | null {

@@ -1,10 +1,10 @@
 export const PRD_TEMPLATE = `# Goal
 Describe what done looks like.
 
-## Requirements
-- requirement 1
-- requirement 2
-- requirement 3
+## QA requirement validation
+- QA test case 1
+- QA test case 2
+- QA test case 3
 
 ## Implementation details
 - exact implementation approach
