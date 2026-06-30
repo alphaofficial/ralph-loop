@@ -2,7 +2,9 @@ import type { CurrentTask, TaskFileContract, TaskFileOp } from "./task-state";
 
 export type FileOp = TaskFileOp;
 
-export type FileContract = TaskFileContract;
+export type FileContract = {
+  path: string;
+};
 
 export type StaticGuardInput = {
   prd: string;
@@ -39,7 +41,7 @@ export function parsePrdFilesToTouch(prd: string): FileContract[] {
     const { indent, line, branch } = parsedLine;
     while (stack.length && stack[stack.length - 1].indent >= indent) stack.pop();
 
-    const match = line.match(/^(.+?)\s+([CMD])$/);
+    const match = line.match(/^(.+?)\s*$/);
     if (!match && !branch && stack.length === 0) {
       if (line === ".") continue;
       stack.push({ indent: -1, path: `${line.replace(/\/$/, "")}/` });
@@ -54,8 +56,13 @@ export function parsePrdFilesToTouch(prd: string): FileContract[] {
 
     if (!match) continue;
 
+    if (line.endsWith("/")) {
+      stack.push({ indent, path: line });
+      continue;
+    }
+
     const parent = stack.map((entry) => entry.path).join("");
-    files.push({ path: normalizePath(`${parent}${match[1].trim()}`), op: match[2] as FileOp });
+    files.push({ path: normalizePath(`${parent}${match[1].trim()}`) });
   }
 
   return files;
@@ -85,8 +92,9 @@ export function staticGuard(input: StaticGuardInput): StaticGuardResult {
   const failures: string[] = [];
   const prdFiles = parsePrdFilesToTouch(input.prd);
   const task = input.currentTask;
-  const prdMap = contractMap(prdFiles, "PRD ## Files to touch", failures);
+  const prdSet = buildFileSet(prdFiles, "PRD ## Files to touch", failures);
   const taskMap = contractMap(task.files, "selected task Files", failures);
+  const annotations = buildAnnotationMap(task.files);
 
   if (prdFiles.length === 0) {
     failures.push("PRD.md is missing a valid ## Files to touch tree.");
@@ -96,7 +104,8 @@ export function staticGuard(input: StaticGuardInput): StaticGuardResult {
   if (task.testCases.length === 0) failures.push("Selected task is missing a valid Test Cases: line.");
 
   for (const [path, op] of taskMap) {
-    if (!prdMap.has(path)) {
+    const annotation = annotations.get(path);
+    if (!prdSet.has(path) && !annotation) {
       failures.push(`${path} is listed in the task but not in PRD.md ## Files to touch.`);
     }
   }
@@ -136,13 +145,13 @@ function extractSection(markdown: string, title: string): string {
 }
 
 function contractMap(
-  files: readonly FileContract[],
+  files: readonly TaskFileContract[],
   label: string,
   failures: string[]
 ): Map<string, FileOp> {
   const map = new Map<string, FileOp>();
   for (const file of files) {
-    if (!file.path || !FILE_OPS.has(file.op)) {
+    if (!file.path) {
       failures.push(`${label} contains an invalid file entry.`);
       continue;
     }
@@ -151,6 +160,38 @@ function contractMap(
       continue;
     }
     map.set(file.path, file.op);
+  }
+  return map;
+}
+
+function buildFileSet(
+  files: readonly FileContract[],
+  label: string,
+  failures: string[]
+): Set<string> {
+  const set = new Set<string>();
+  for (const file of files) {
+    if (!file.path) {
+      failures.push(`${label} contains an invalid file entry.`);
+      continue;
+    }
+    if (set.has(file.path)) {
+      failures.push(`${label} lists ${file.path} more than once.`);
+      continue;
+    }
+    set.add(file.path);
+  }
+  return set;
+}
+
+function buildAnnotationMap(
+  files: readonly TaskFileContract[]
+): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const file of files) {
+    if (file.annotation) {
+      map.set(file.path, file.annotation);
+    }
   }
   return map;
 }

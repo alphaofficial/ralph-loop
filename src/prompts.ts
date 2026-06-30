@@ -1,4 +1,4 @@
-import { readProjectFile } from "./files";
+import { extractGoalSection, extractQaValidationSection, readProjectFile } from "./files";
 import type { CurrentTask } from "./task-state";
 
 export const MAX_CLARIFYING_QUESTIONS = 5;
@@ -33,19 +33,20 @@ ${clarifications}
    # Goal
    (what done looks like, 1-2 sentences)
 
-   ## Requirements
-   (bulleted list of specific requirements)
+   ## QA requirement validation
+   (bulleted list of bahaviour driven test cases that verify the objectives are met and works end to end as expected)
 
    ## Implementation details
    (full technical requirements: exact implementation approach, affected modules, interfaces/APIs/CLI flags/file formats/events/data contracts, file-level responsibilities, error handling, compatibility/security/performance constraints, integration/migration notes, and any required pseudocode or examples)
 
    ## Files to touch
-   (complete implementation allowlist for the whole change, formatted as a nested Markdown list; directory rows end with /, and every file row ends with C=create, M=modify, or D=delete)
+   (complete implementation allowlist for the whole change, formatted as a nested Markdown list; directory rows end with /).
    Example:
    - src/
-     - feature.ts C
-     - existing.ts M
-   - README.md M
+     - feature.ts
+     - existing.ts
+   - README.md
+
 
    ## Test cases
    (bulleted list of all required tests or verification checks for the whole change)
@@ -108,6 +109,10 @@ Rules:
 - Add requirement that after all steps are done, it is properly tested or verified before declaring the work complete.
 - Do NOT create any other files.
 - NEVER run git write commands (git add, git commit, git push). Only git read commands are permitted (git log, git diff, git show).
+
+
+IMPORTANT:
+The Files to touch  section in PRD is very key to the entire process as we have a static guard that will halt the program if files listed here is not accurate or not aligned with each task. Be very thorough with the files to touch and the tasks.md Files list. Ensure that executable task and the changes it will create will touch exactly the files listed. And the files listed aligns with the broader files tree in Files to touch. We do not want the loop halting because of this misalignment.
 `;
 }
 
@@ -204,7 +209,7 @@ None selected.
   return `<CURRENT_TASK>
 Description: ${currentTask.description}
 Files:
-${currentTask.files.map((file) => `- ${file.path} ${file.op}`).join("\n")}
+${currentTask.files.map((file) => `- ${file.path} ${file.op}${file.annotation ? ` [${file.annotation}]` : ""}`).join("\n")}
 Expectation: ${currentTask.expectation}
 Test Cases:
 ${currentTask.testCases.map((testCase) => `- ${testCase}`).join("\n")}
@@ -263,4 +268,56 @@ ${readProjectFile(target, "PRD.md")}
 function formatTouchedFiles(files: string[]): string {
   if (files.length === 0) return "- none captured";
   return files.map((file) => `- ${file}`).join("\n");
+}
+export function generateQAPrompt(target: string): string {
+  const prd = readProjectFile(target, "PRD.md");
+  const qaValidationItems = extractQaValidationSection(prd).trim() || "No QA requirement validation items were found in PRD.md.";
+
+  return `You are performing QA for Ralph.
+
+## Your Task
+You are a QA engineer reviewing the implementation. Compare the code against the Goal in PRD.md and manually verify that changes work. Explicitly validate each QA requirement validation item before declaring the work complete. If you find gaps, missing pieces, bugs, or failed QA requirement validation items, add tasks to TASKS.md.
+
+## PRD.md Goal
+${extractGoalSection(prd)}
+
+## QA Requirement Validation Items
+${qaValidationItems}
+
+## QA Process
+1. Read the implementation files thoroughly
+2. Trace through the code to understand how it works
+3. Manually verify the implementation actually works (run the app, test functionality)
+4. Validate every item listed in QA Requirement Validation Items and record whether each item passed or failed
+5. Check for edge cases, error handling, and missing pieces
+6. If you find issues, append tasks to TASKS.md:
+   - [ ] {issue description}
+     - Files: {file path for the change that also exist in PRD} {C|M} [{hotfix|bug|missing}]
+     - Expectation: {what should be fixed or added}
+     - Test Cases: QA verification
+
+## QA Checklist
+- Run the app and verify core functionality works
+- Verify each QA Requirement Validation Items entry individually
+- Test edge cases and error conditions
+- If UI exists, verify buttons, forms, and interactions work
+- Check for memory leaks, race conditions, or performance issues
+- Do NOT rely on existing tests - verify manually
+- Manually verify that implementation works, based on verified evidenece and facts. 
+  - For example: if goal is to implement a document upload. Verify that you are able to actually upload a file from the UI. 
+  - Another example: if implementation is to be able to record on click of a button, run the app and verify that it works. 
+  - If project has UI check that UI is functional, check buttons work as expected, check forms work
+  That is the kind of evidence based manual verification we are looking for!
+
+## Important
+- Only append to TASKS.md, don't modify existing checked tasks
+- Be thorough
+- Do not write placeholder tasks like "confirm X works" - be specific
+- Do NOT touch any files except appending to TASKS.md
+- Do NOT run git write commands (git add, commit, push)
+- Do NOT touch any other files
+- If you need to write scripts to automate verifications, do it in a tpm directory and clean up afterwards
+- When you run app to do verification do not leave it running. clean up any process, tmp stuff you run
+- Leave the codebase exactly as you found it.
+`;
 }

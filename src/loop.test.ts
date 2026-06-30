@@ -69,7 +69,7 @@ describe("makeAutoReviewFeedbackPrompt", () => {
   - Test Cases: Review prompt excludes full TASKS.md and STATUS.md.
 `;
 
-      writeFileSync(join(target, "PRD.md"), "# PRD\n\n## Requirements\n- Full PRD context.\n");
+      writeFileSync(join(target, "PRD.md"), "# PRD\n\n## QA requirement validation\n- Full PRD context.\n");
       writeFileSync(join(target, "TASKS.md"), tasks);
       writeFileSync(join(target, "STATUS.md"), "# Status\nStatus-only context.\n");
 

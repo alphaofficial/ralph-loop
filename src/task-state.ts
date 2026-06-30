@@ -3,6 +3,7 @@ export type TaskFileOp = "C" | "M" | "D";
 export type TaskFileContract = {
   path: string;
   op: TaskFileOp;
+  annotation?: string;
 };
 
 export type CurrentTask = {
@@ -114,11 +115,12 @@ function parseFilesLine(line: string): TaskFileContract[] {
   if (line.trim().toUpperCase() === "N/A") return [];
 
   return splitCommaList(line).map((entry) => {
-    const match = entry.match(/^(.+?)\s+([CMD])$/);
+    const match = entry.match(/^(.+?)\s+([CMD])\s*(\[.+\])?$/);
     if (!match) throw new Error(`Invalid Files entry: ${entry}`);
     return {
       path: normalizePath(match[1]),
       op: match[2] as TaskFileOp,
+      annotation: match[3] ? match[3].slice(1, -1) : undefined,
     };
   });
 }

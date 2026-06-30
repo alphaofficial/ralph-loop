@@ -13,6 +13,7 @@ import {
 } from "./review";
 import { checkTask, getTask, uncheckTask as uncheckSelectedTask, type CurrentTask } from "./task-state";
 import { makeLoopPrompt } from "./prompts";
+import { generateQAPrompt } from "./prompts";
 
 export const makePrompt = makeLoopPrompt;
 
@@ -352,6 +353,28 @@ export async function mainLoop(
     if (result.completed) {
       state.consecutiveFailures = 0;
       state.lastFailedOutput = "";
+
+      // if tasks are completed at this stage
+      // run the QA to continue or complete
+      if (allTasksComplete(ctx.target)) {
+        const tasksBeforeQA = readFileSync(join(ctx.target, "TASKS.md"), "utf-8");
+        const qaPrompt = generateQAPrompt(ctx.target);
+        const stopProvider = startSpinner("🔍 QA started");
+        try {
+          await invokeProvider(ctx.provider, ctx.target, qaPrompt, process.env.RALPH_MODEL);
+        } catch (e) {
+          err(`⚠️ QA failed: ${e instanceof Error ? e.message : e}`);
+        } finally {
+          stopProvider();
+        }
+
+        const tasksAfterQA = readFileSync(join(ctx.target, "TASKS.md"), "utf-8");
+        if (tasksAfterQA !== tasksBeforeQA) {
+          log(`⚠️ QA found issues, added tasks to TASKS.md`);
+          continue;
+        }
+      }
+
       continue;
     }
 

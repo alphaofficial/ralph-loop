@@ -6,11 +6,11 @@ const prd = `# PRD
 
 ## Files to touch
 - src/
-  - spec-guard.ts M
-  - spec-guard.test.ts C
-  - task-state.ts C
-  - loop.test.ts C
-- README.md M
+  - spec-guard.ts
+  - spec-guard.test.ts
+  - task-state.ts
+  - loop.test.ts
+- README.md
 
 ## Test cases
 - staticGuard passes when changed implementation files are within the selected current task and match PRD file operations.
