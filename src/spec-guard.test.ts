@@ -43,7 +43,7 @@ describe("staticGuard", () => {
       changedEntries: [
         { path: "src/spec-guard.ts", index: " ", worktree: "M" },
         { path: "src/spec-guard.test.ts", index: "?", worktree: "?" },
-        { path: "STATUS.md", index: " ", worktree: "M" },
+        { path: ".ralph/STATUS.md", index: " ", worktree: "M" },
         { path: ".ralph/static-guard-summary.txt", index: "?", worktree: "?" },
       ],
     });
@@ -117,7 +117,7 @@ describe("staticGuard", () => {
         testCases: ["Run the configured verification command."],
       },
       changedEntries: [
-        { path: "STATUS.md", index: " ", worktree: "M" },
+        { path: ".ralph/STATUS.md", index: " ", worktree: "M" },
         { path: ".ralph/check-output.txt", index: "?", worktree: "?" },
       ],
     });
@@ -146,8 +146,8 @@ describe("staticGuard", () => {
       prd,
       currentTask,
       changedEntries: [
-        { path: "PRD.md", index: " ", worktree: "M" },
-        { path: "TASKS.md", index: " ", worktree: "M" },
+        { path: ".ralph/PRD.md", index: " ", worktree: "M" },
+        { path: ".ralph/TASKS.md", index: " ", worktree: "M" },
       ],
     });
 

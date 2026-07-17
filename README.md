@@ -8,16 +8,13 @@ Supports **Claude Code**, **GitHub Copilot CLI**, **Codex**, **Gemini CLI**, **H
 
 ## What you edit by hand
 Only these three files in the target project:
-- `PRD.md`
-- `TASKS.md`
-- `STATUS.md`
+- `.ralph/PRD.md`
+- `.ralph/TASKS.md`
+- `.ralph/STATUS.md`
 
 Everything else is optional.
 
 If the target directory is a git repo, Ralph automatically adds these to `.git/info/exclude`:
-- `PRD.md`
-- `TASKS.md`
-- `STATUS.md`
 - `.ralph/`
 
 ## Install
@@ -49,7 +46,7 @@ Note: `ralph claude` automatically ignores a stale `ANTHROPIC_API_KEY` env var s
 Inside any project:
 ```bash
 ralph init
-# edit PRD.md, TASKS.md, STATUS.md
+# edit .ralph/PRD.md, .ralph/TASKS.md, .ralph/STATUS.md
 ralph claude
 ralph hermes
 ralph pi
@@ -75,10 +72,10 @@ ralph opencode ~/code/my-app
 
 ## How it works
 ```
-while (unchecked tasks in TASKS.md) {
+while (unchecked tasks in .ralph/TASKS.md) {
   select the first unchecked task
   spawn fresh AI agent
-  agent implements the selected task without editing TASKS.md
+  agent implements the selected task without editing .ralph/TASKS.md
   run static guardrails to ensure agent follows spec
   run verification command
   run auto review gate
@@ -87,11 +84,11 @@ while (unchecked tasks in TASKS.md) {
 
 Each iteration gets a fresh context — no memory of previous runs. Progress is tracked in files and git history, not in the AI's context window.
 
-Ralph selects the first unchecked task in `TASKS.md`, passes that current task to the provider, and owns task checkbox state: providers must not edit `TASKS.md`; Ralph checks the selected task only after static guard and verification pass and unchecks it on guard failure.
+Ralph selects the first unchecked task in `.ralph/TASKS.md`, passes that current task to the provider, and owns task checkbox state: providers must not edit `.ralph/TASKS.md`; Ralph checks the selected task only after static guard and verification pass and unchecks it on guard failure.
 
-`PRD.md` is the source-of-truth implementation contract. `TASKS.md` slices that contract into one iteration at a time. The static guard validates provider changes against the runner-selected current task and `PRD.md`. Ralph fails an iteration before verification or auto-commit if implementation files changed outside the selected task's `Files:` line, if that task file list is outside `PRD.md`'s `## Files to touch` tree, if task test cases are not listed in `PRD.md`, if `TASKS.md` changes during provider execution, or if `PRD.md` is modified during implementation.
+`.ralph/PRD.md` is the source-of-truth implementation contract. `.ralph/TASKS.md` slices that contract into one iteration at a time. The static guard validates provider changes against the runner-selected current task and `.ralph/PRD.md`. Ralph fails an iteration before verification or auto-commit if implementation files changed outside the selected task's `Files:` line, if that task file list is outside `.ralph/PRD.md`'s `## Files to touch` tree, if task test cases are not listed in `.ralph/PRD.md`, if `.ralph/TASKS.md` changes during provider execution, or if `.ralph/PRD.md` is modified during implementation.
 
-Auto-review runs once after each committed iteration. If the reviewer exits unsuccessfully or returns empty output, Ralph reverts the commit and records unavailable review feedback in `STATUS.md`. Otherwise, Ralph records the reviewer output in `STATUS.md` so the next normal iteration can address it.
+Auto-review runs once after each committed iteration. If the reviewer exits unsuccessfully or returns empty output, Ralph reverts the commit and records unavailable review feedback in `.ralph/STATUS.md`. Otherwise, Ralph records the reviewer output in `.ralph/STATUS.md` so the next normal iteration can address it.
 
 ## Verification command
 The runner auto-detects a check command in this order:
@@ -146,7 +143,7 @@ RALPH_MODEL=opencode/qwen3.6-plus-free ralph opencode
 ```bash
 cd ~/code/my-app
 ralph init
-$EDITOR PRD.md TASKS.md STATUS.md
+$EDITOR .ralph/PRD.md .ralph/TASKS.md .ralph/STATUS.md
 ralph claude
 ```
 
@@ -192,10 +189,10 @@ Add Stripe subscriptions.
 - billing UI renders the current plan from persisted billing state
 
 ## Guardrails
-- PRD.md is the source of truth for the implementation
+- .ralph/PRD.md is the source of truth for the implementation
 - do not add unlisted behavior, files, dependencies, abstractions, or tests
-- do not touch files outside the Files to touch tree except TASKS.md, STATUS.md, and .ralph/*
-- record spec gaps in STATUS.md instead of guessing
+- do not touch files outside the Files to touch tree except .ralph/TASKS.md, .ralph/STATUS.md, and .ralph/*
+- record spec gaps in .ralph/STATUS.md instead of guessing
 
 ## Constraints
 - use existing stack patterns

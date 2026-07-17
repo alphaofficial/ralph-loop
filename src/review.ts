@@ -1,6 +1,6 @@
 import { captureProvider, type Provider } from "./providers";
 import { join } from "node:path";
-import { updateReviewFeedbackBlock } from "./files";
+import { STATUS_FILE, projectFilePath, updateReviewFeedbackBlock } from "./files";
 import {
   makeAutoReviewFeedbackPrompt,
   type ReviewScope,
@@ -87,7 +87,7 @@ function failAutoReview(target: string, feedback: string): boolean {
 }
 
 function writeReviewFeedbackStatus(target: string, feedback: string) {
-  updateReviewFeedbackBlock(join(target, "STATUS.md"), feedback);
+  updateReviewFeedbackBlock(projectFilePath(target, STATUS_FILE), feedback);
 }
 
 function revertLastCommit(target: string): boolean {
