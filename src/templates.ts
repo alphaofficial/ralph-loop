@@ -56,7 +56,7 @@ N/A
 None yet.
 
 # Next step
-Read PRD.md and start with the first task.
+Read .ralph/PRD.md and start with the first task.
 
 <!-- RALPH_REVIEW_FEEDBACK:START -->
 {"status":"approved","changes":[]}

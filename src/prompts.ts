@@ -1,4 +1,4 @@
-import { extractGoalSection, extractQaValidationSection, readProjectFile } from "./files";
+import { PRD_FILE, STATUS_FILE, extractGoalSection, extractQaValidationSection, readProjectFile } from "./files";
 import type { CurrentTask } from "./task-state";
 
 export const MAX_CLARIFYING_QUESTIONS = 5;
@@ -24,9 +24,9 @@ The user wants to build: ${description}
 ${clarifications ? `Interactive clarification answers collected by Ralph CLI:
 ${clarifications}
 
-` : ""}Generate exactly three files. Write each file to disk:
+` : ""}Generate exactly three files. Write each file to disk under .ralph/:
 
-1. PRD.md - Product requirements document and implementation contract.
+1. .ralph/PRD.md - Product requirements document and implementation contract.
    PRD.md is the source of truth for the entire implementation. It must be detailed enough that future providers implement from the spec only, without inventing product behavior, architecture, files, dependencies, abstractions, or tests.
 
    Use exactly these sections:
@@ -60,7 +60,7 @@ ${clarifications}
    ## Definition of done
    (bulleted list of success criteria — e.g. tests pass, behavior works)
 
-2. TASKS.md - Ordered checklist of tasks.
+2. .ralph/TASKS.md - Ordered checklist of tasks.
    Each task must use this format with comma-separated Files and Test Cases:
 
    - [ ] Task description.
@@ -71,7 +71,7 @@ ${clarifications}
    Break the work into small, focused tasks, one per iteration. Each task's Files entries must be a subset of PRD.md ## Files to touch. The task's Files line owns the per-iteration C/M/D markers, so a file listed as C in PRD.md may be listed as M by a later task that modifies it. Each task's Test Cases entries must map to the intent of PRD.md ## Test cases without requiring a 1:1 exact string match.
    Task Files lines must list only implementation files, or N/A for verification-only tasks. Do not list PRD.md, TASKS.md, STATUS.md, or .ralph/* in any task Files line.
 
-3. STATUS.md — Initial status:
+3. .ralph/STATUS.md — Initial status:
    # Current status
    Not started.
 
@@ -103,7 +103,7 @@ Rules:
 - Tasks should be small enough for one AI iteration each.
 - Tasks should be flat, no hierarchy, no titles or sections in TASKS.md. Use only checklist items and their Files, Expectation, and Test Cases lines.
 - Look at the existing codebase to inform requirements and constraints.
-- Write all three files to the project root directory. Overwrite them completely if they already exist.
+- Write all three files to the .ralph directory. Overwrite them completely if they already exist.
 - STATUS.md must only include Current status, Last attempt, Known issues, Next step, and Ralph managed blocks. PRD.md is authoritative; record blocking spec gaps under Known issues instead of making non-spec choices.
 - Add requirement that before each step is done, there are test coverage for new changes, and all tests pass.
 - Add requirement that after all steps are done, it is properly tested or verified before declaring the work complete.
@@ -124,8 +124,8 @@ export function makeLoopPrompt(
   lastFailedOutput = "",
   checkDisabled = false
 ) {
-  const prd = readProjectFile(target, "PRD.md");
-  const status = readProjectFile(target, "STATUS.md");
+  const prd = readProjectFile(target, PRD_FILE);
+  const status = readProjectFile(target, STATUS_FILE);
 
   let content = `You are running one iteration of a Ralph loop inside this project.
 
@@ -261,7 +261,7 @@ ${scope.diff || "# No iteration diff was captured."}
 The PRD is embedded below. Use this embedded copy and the selected current task instead of reading PRD.md, TASKS.md, or STATUS.md via tool calls.
 
 <PRD>
-${readProjectFile(target, "PRD.md")}
+${readProjectFile(target, PRD_FILE)}
 </PRD>`;
 }
 
@@ -270,7 +270,7 @@ function formatTouchedFiles(files: string[]): string {
   return files.map((file) => `- ${file}`).join("\n");
 }
 export function generateQAPrompt(target: string): string {
-  const prd = readProjectFile(target, "PRD.md");
+  const prd = readProjectFile(target, PRD_FILE);
   const qaValidationItems = extractQaValidationSection(prd).trim() || "No QA requirement validation items were found in PRD.md.";
 
   return `You are performing QA for Ralph.

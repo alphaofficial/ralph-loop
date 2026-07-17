@@ -8,9 +8,18 @@ import {
 import { join, dirname } from "node:path";
 import { PRD_TEMPLATE, TASKS_TEMPLATE, STATUS_TEMPLATE } from "./templates";
 
+export const RALPH_DIR = ".ralph";
+export const PRD_FILE = `${RALPH_DIR}/PRD.md`;
+export const TASKS_FILE = `${RALPH_DIR}/TASKS.md`;
+export const STATUS_FILE = `${RALPH_DIR}/STATUS.md`;
+
+export function projectFilePath(target: string, filename: string): string {
+  return join(target, filename);
+}
+
 export function readProjectFile(target: string, filename: string): string {
   try {
-    return readFileSync(join(target, filename), "utf-8").trimEnd();
+    return readFileSync(projectFilePath(target, filename), "utf-8").trimEnd();
   } catch {
     return `${filename} could not be read.`;
   }
@@ -29,7 +38,7 @@ export function ensureGitExcludes(target: string) {
   const lines = content.split("\n");
 
   let needsNewline = content.length > 0 && !content.endsWith("\n");
-  for (const pattern of ["PRD.md", "TASKS.md", "STATUS.md", ".ralph/"]) {
+  for (const pattern of [`${RALPH_DIR}/`]) {
     if (!lines.includes(pattern)) {
       appendFileSync(excludeFile, `${needsNewline ? "\n" : ""}${pattern}\n`);
       needsNewline = false;
@@ -38,18 +47,18 @@ export function ensureGitExcludes(target: string) {
 }
 
 export function ensureTemplates(target: string, options: { resetStatus?: boolean } = {}) {
-  mkdirSync(join(target, ".ralph"), { recursive: true, mode: 0o700 });
+  mkdirSync(projectFilePath(target, RALPH_DIR), { recursive: true, mode: 0o700 });
 
   const files: [string, string][] = [
-    [join(target, "PRD.md"), PRD_TEMPLATE],
-    [join(target, "TASKS.md"), TASKS_TEMPLATE],
-    [join(target, "STATUS.md"), STATUS_TEMPLATE],
+    [projectFilePath(target, PRD_FILE), PRD_TEMPLATE],
+    [projectFilePath(target, TASKS_FILE), TASKS_TEMPLATE],
+    [projectFilePath(target, STATUS_FILE), STATUS_TEMPLATE],
   ];
 
   for (const [path, template] of files) {
     if (!existsSync(path)) writeFileSync(path, template);
   }
-  if (options.resetStatus) writeFileSync(join(target, "STATUS.md"), STATUS_TEMPLATE);
+  if (options.resetStatus) writeFileSync(projectFilePath(target, STATUS_FILE), STATUS_TEMPLATE);
 
   ensureGitExcludes(target);
 }

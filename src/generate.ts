@@ -2,7 +2,7 @@ import { join } from "node:path";
 import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { log, startSpinner } from "./ui";
 import { invokeProvider, providerCommand, type Provider } from "./providers";
-import { ensureGitExcludes } from "./files";
+import { ensureGitExcludes, PRD_FILE, RALPH_DIR, STATUS_FILE, TASKS_FILE, projectFilePath } from "./files";
 import {
   MAX_CLARIFYING_QUESTIONS,
   makeClarifyingQuestionsPrompt,
@@ -100,13 +100,13 @@ export async function generate(
   model?: string,
   interactive = false
 ): Promise<void> {
-  mkdirSync(join(target, ".ralph"), { recursive: true, mode: 0o700 });
+  mkdirSync(projectFilePath(target, RALPH_DIR), { recursive: true, mode: 0o700 });
   ensureGitExcludes(target);
 
   const clarifications = interactive
     ? await collectClarifications(await generateClarifyingQuestions(provider, target, description, model))
     : "";
-  const promptFile = join(target, ".ralph", "prompt-gen.txt");
+  const promptFile = join(target, RALPH_DIR, "prompt-gen.txt");
   const prompt = makeGeneratePrompt(description, clarifications);
   writeFileSync(promptFile, prompt, { mode: 0o600 });
 
@@ -120,15 +120,14 @@ export async function generate(
     stop();
   }
 
-  // Verify files were created
-  const files = ["PRD.md", "TASKS.md", "STATUS.md"];
+  const files = [PRD_FILE, TASKS_FILE, STATUS_FILE];
   for (const file of files) {
     try {
-      readFileSync(join(target, file));
+      readFileSync(projectFilePath(target, file));
     } catch {
       throw new Error(`${provider} did not create ${file}`);
     }
   }
 
-  log("✅ Generated PRD.md, TASKS.md, STATUS.md");
+  log(`✅ Generated ${PRD_FILE}, ${TASKS_FILE}, ${STATUS_FILE}`);
 }

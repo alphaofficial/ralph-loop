@@ -114,15 +114,15 @@ export function staticGuard(input: StaticGuardInput): StaticGuardResult {
 
   for (const entry of changedEntries) {
     const path = normalizePath(entry.path);
-    if (path === "PRD.md") {
+    if (path === ".ralph/PRD.md") {
       failures.push("PRD.md was modified during an implementation iteration.");
       continue;
     }
-    if (path === "TASKS.md") {
+    if (path === ".ralph/TASKS.md") {
       failures.push("TASKS.md was modified during provider execution; the Ralph runner owns task state.");
       continue;
     }
-    if (path === "STATUS.md" || path.startsWith(".ralph/")) continue;
+    if (path === ".ralph/STATUS.md" || path.startsWith(".ralph/")) continue;
     const expectedOp = taskMap.get(path);
     if (!expectedOp) {
       failures.push(`${path} changed but is not listed in the selected task Files: line.`);

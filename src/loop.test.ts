@@ -5,6 +5,7 @@ import { describe, expect, test } from "bun:test";
 import { gitStatusEntries, handleStaticGuardFailure, makePrompt, updateTaskAfterVerification } from "./loop";
 import { makeAutoReviewFeedbackPrompt } from "./prompts";
 import { getTask } from "./task-state";
+import { PRD_FILE, STATUS_FILE, TASKS_FILE, ensureTemplates, projectFilePath } from "./files";
 
 describe("makePrompt", () => {
   test("embeds the Ralph-selected current task and tells the provider not to choose tasks or edit TASKS.md", () => {
@@ -21,9 +22,10 @@ describe("makePrompt", () => {
   - Test Cases: makePrompt embeds the Ralph-selected current task and tells the provider not to choose tasks or edit TASKS.md.
 `;
 
-      writeFileSync(join(target, "PRD.md"), "# PRD\n");
-      writeFileSync(join(target, "TASKS.md"), tasks);
-      writeFileSync(join(target, "STATUS.md"), "# Status\n");
+      ensureTemplates(target);
+      writeFileSync(projectFilePath(target, PRD_FILE), "# PRD\n");
+      writeFileSync(projectFilePath(target, TASKS_FILE), tasks);
+      writeFileSync(projectFilePath(target, STATUS_FILE), "# Status\n");
 
       const currentTask = getTask(tasks);
       if (!currentTask) throw new Error("Expected current task");
@@ -69,9 +71,10 @@ describe("makeAutoReviewFeedbackPrompt", () => {
   - Test Cases: Review prompt excludes full TASKS.md and STATUS.md.
 `;
 
-      writeFileSync(join(target, "PRD.md"), "# PRD\n\n## QA requirement validation\n- Full PRD context.\n");
-      writeFileSync(join(target, "TASKS.md"), tasks);
-      writeFileSync(join(target, "STATUS.md"), "# Status\nStatus-only context.\n");
+      ensureTemplates(target);
+      writeFileSync(projectFilePath(target, PRD_FILE), "# PRD\n\n## QA requirement validation\n- Full PRD context.\n");
+      writeFileSync(projectFilePath(target, TASKS_FILE), tasks);
+      writeFileSync(projectFilePath(target, STATUS_FILE), "# Status\nStatus-only context.\n");
 
       const currentTask = getTask(tasks);
       if (!currentTask) throw new Error("Expected current task");
@@ -132,8 +135,9 @@ describe("runner-owned task state", () => {
 `;
       const tasksAfterProvider = tasksBefore.replace("- [ ] Wire", "- [x] Wire");
 
-      writeFileSync(join(target, "TASKS.md"), tasksAfterProvider);
-      writeFileSync(join(target, "STATUS.md"), "# Status\n");
+      ensureTemplates(target);
+      writeFileSync(projectFilePath(target, TASKS_FILE), tasksAfterProvider);
+      writeFileSync(projectFilePath(target, STATUS_FILE), "# Status\n");
 
       const currentTask = getTask(tasksBefore);
       if (!currentTask) throw new Error("Expected current task");
@@ -145,11 +149,11 @@ describe("runner-owned task state", () => {
       );
 
       expect(summary).toContain("Static guard: FAIL");
-      expect(readFileSync(join(target, "TASKS.md"), "utf-8")).toBe(tasksBefore);
-      expect(readFileSync(join(target, "STATUS.md"), "utf-8")).toContain(
+      expect(readFileSync(projectFilePath(target, TASKS_FILE), "utf-8")).toBe(tasksBefore);
+      expect(readFileSync(projectFilePath(target, STATUS_FILE), "utf-8")).toContain(
         "src/outside.ts changed but is not listed in the selected task Files: line."
       );
-      expect(readFileSync(join(target, "STATUS.md"), "utf-8")).toContain("<!-- RALPH_STATIC_GUARD:START -->");
+      expect(readFileSync(projectFilePath(target, STATUS_FILE), "utf-8")).toContain("<!-- RALPH_STATIC_GUARD:START -->");
     } finally {
       rmSync(target, { recursive: true, force: true });
     }
@@ -163,13 +167,14 @@ describe("runner-owned task state", () => {
   - Expectation: The loop uses getTask before provider execution, unchecks the selected task and writes STATUS.md notes on static guard failure, checks it only after successful verification, and leaves it unchecked after failed verification.
   - Test Cases: Successful verification checks the selected current task before auto-commit.
 `;
-      writeFileSync(join(target, "TASKS.md"), tasks);
+      ensureTemplates(target);
+      writeFileSync(projectFilePath(target, TASKS_FILE), tasks);
 
       const currentTask = getTask(tasks);
       if (!currentTask) throw new Error("Expected current task");
 
       expect(updateTaskAfterVerification(target, currentTask, 0)).toBe(true);
-      expect(readFileSync(join(target, "TASKS.md"), "utf-8")).toBe(
+      expect(readFileSync(projectFilePath(target, TASKS_FILE), "utf-8")).toBe(
         tasks.replace("- [ ] Wire", "- [x] Wire")
       );
     } finally {
@@ -185,13 +190,14 @@ describe("runner-owned task state", () => {
   - Expectation: The loop uses getTask before provider execution, unchecks the selected task and writes STATUS.md notes on static guard failure, checks it only after successful verification, and leaves it unchecked after failed verification.
   - Test Cases: Failed verification leaves the selected current task unchecked for retry.
 `;
-      writeFileSync(join(target, "TASKS.md"), tasks);
+      ensureTemplates(target);
+      writeFileSync(projectFilePath(target, TASKS_FILE), tasks);
 
       const currentTask = getTask(tasks);
       if (!currentTask) throw new Error("Expected current task");
 
       expect(updateTaskAfterVerification(target, currentTask, 1)).toBe(false);
-      expect(readFileSync(join(target, "TASKS.md"), "utf-8")).toBe(tasks);
+      expect(readFileSync(projectFilePath(target, TASKS_FILE), "utf-8")).toBe(tasks);
     } finally {
       rmSync(target, { recursive: true, force: true });
     }

@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { writeFileSync, readFileSync } from "node:fs";
 import { log, err, startSpinner, formatDuration } from "./ui";
-import { ensureTemplates, readProjectFile, updateRunnerBlock, updateStaticGuardBlock, updateStatusNextStep } from "./files";
+import { ensureTemplates, readProjectFile, updateRunnerBlock, updateStaticGuardBlock, updateStatusNextStep, PRD_FILE, STATUS_FILE, TASKS_FILE, projectFilePath } from "./files";
 import { invokeProvider, type Provider } from "./providers";
 import {
   parseGitStatusEntries,
@@ -20,7 +20,7 @@ export const makePrompt = makeLoopPrompt;
 export const SKIP = Symbol("skip");
 
 function writeUncheckedTask(target: string, currentTask: CurrentTask): void {
-  const tasksPath = join(target, "TASKS.md");
+  const tasksPath = projectFilePath(target, TASKS_FILE);
   const latestTasks = readFileSync(tasksPath, "utf-8");
   writeFileSync(tasksPath, uncheckSelectedTask(latestTasks, currentTask));
 }
@@ -36,9 +36,9 @@ function tryUncheckCurrentTask(target: string, currentTask: CurrentTask): boolea
 }
 
 function updateNextStepFromTasks(target: string): void {
-  const nextTask = getTask(readProjectFile(target, "TASKS.md"));
+  const nextTask = getTask(readProjectFile(target, TASKS_FILE));
   updateStatusNextStep(
-    join(target, "STATUS.md"),
+    projectFilePath(target, STATUS_FILE),
     nextTask ? `Next task: ${nextTask.description}` : "All tasks complete."
   );
 }
@@ -57,7 +57,7 @@ export function handleStaticGuardFailure(
     summary += `${summary.endsWith("\n") ? "" : "\n"}Task rollback failed: ${message}\n`;
   }
 
-  updateStaticGuardBlock(join(target, "STATUS.md"), summary);
+  updateStaticGuardBlock(projectFilePath(target, STATUS_FILE), summary);
   return summary;
 }
 
@@ -68,7 +68,7 @@ export function updateTaskAfterVerification(
 ): boolean {
   if (code !== 0 && code !== SKIP) return false;
 
-  const tasksPath = join(target, "TASKS.md");
+  const tasksPath = projectFilePath(target, TASKS_FILE);
   const latestTasks = readFileSync(tasksPath, "utf-8");
   writeFileSync(tasksPath, checkTask(latestTasks, currentTask));
   return true;
@@ -117,7 +117,7 @@ export async function runCheck(
 export function allTasksComplete(target: string): boolean {
   let content: string;
   try {
-    content = readFileSync(join(target, "TASKS.md"), "utf-8");
+    content = readFileSync(projectFilePath(target, TASKS_FILE), "utf-8");
   } catch {
     return true;
   }
@@ -229,8 +229,8 @@ async function runIteration(ctx: LoopContext, state: LoopState): Promise<Iterati
   const total = formatDuration(Date.now() - ctx.loopStart);
   log(`loop ${state.loop} (${ctx.provider}) · total ${total}${state.consecutiveFailures > 0 ? ` · failure ${state.consecutiveFailures}/${ctx.maxLoops}` : ""}`);
 
-  const prdBefore = readProjectFile(ctx.target, "PRD.md");
-  const tasksBefore = readProjectFile(ctx.target, "TASKS.md");
+  const prdBefore = readProjectFile(ctx.target, PRD_FILE);
+  const tasksBefore = readProjectFile(ctx.target, TASKS_FILE);
   const currentTask = getTask(tasksBefore);
   if (!currentTask) return { completed: true };
 
@@ -262,7 +262,7 @@ async function runIteration(ctx: LoopContext, state: LoopState): Promise<Iterati
     return { completed: false, lastFailedOutput: staticSummaryWithRollbackNotes };
   }
   writeFileSync(staticOut, staticSummary, { mode: 0o600 });
-  updateStaticGuardBlock(join(ctx.target, "STATUS.md"), staticSummary);
+  updateStaticGuardBlock(projectFilePath(ctx.target, STATUS_FILE), staticSummary);
 
   const summaryFile = join(ctx.target, ".ralph", "check-summary.txt");
   const checkOut = join(ctx.target, ".ralph", "check-output.txt");
@@ -289,7 +289,7 @@ async function runIteration(ctx: LoopContext, state: LoopState): Promise<Iterati
   }
 
   writeFileSync(summaryFile, summary, { mode: 0o600 });
-  updateRunnerBlock(join(ctx.target, "STATUS.md"), summary);
+  updateRunnerBlock(projectFilePath(ctx.target, STATUS_FILE), summary);
 
   if (updateTaskAfterVerification(ctx.target, currentTask, code)) {
     updateNextStepFromTasks(ctx.target);
@@ -331,7 +331,7 @@ export async function mainLoop(
 
   if (dryRun) {
     log("dry run, not invoking " + provider);
-    const currentTask = getTask(readProjectFile(target, "TASKS.md"));
+    const currentTask = getTask(readProjectFile(target, TASKS_FILE));
     console.log(makeLoopPrompt(target, checkCmd, 1, currentTask, "", checkDisabled));
     return 0;
   }
@@ -357,7 +357,7 @@ export async function mainLoop(
       // if tasks are completed at this stage
       // run the QA to continue or complete
       if (allTasksComplete(ctx.target)) {
-        const tasksBeforeQA = readFileSync(join(ctx.target, "TASKS.md"), "utf-8");
+        const tasksBeforeQA = readFileSync(projectFilePath(ctx.target, TASKS_FILE), "utf-8");
         const qaPrompt = generateQAPrompt(ctx.target);
         const stopProvider = startSpinner("🔍 QA started");
         try {
@@ -368,7 +368,7 @@ export async function mainLoop(
           stopProvider();
         }
 
-        const tasksAfterQA = readFileSync(join(ctx.target, "TASKS.md"), "utf-8");
+        const tasksAfterQA = readFileSync(projectFilePath(ctx.target, TASKS_FILE), "utf-8");
         if (tasksAfterQA !== tasksBeforeQA) {
           log(`⚠️ QA found issues, added tasks to TASKS.md`);
           continue;
