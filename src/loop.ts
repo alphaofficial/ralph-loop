@@ -189,6 +189,10 @@ export async function autoCommit(target: string, loop: number, canCommit = isGit
   }
 }
 
+export function shouldRunAutoReview(committed: boolean, autoReviewEnabled: boolean): boolean {
+  return committed && autoReviewEnabled;
+}
+
 export function gitStatusEntries(target: string, canInspect = isGitRepo(target)) {
   if (!canInspect) return [];
   const proc = Bun.spawnSync(["git", "-C", target, "status", "--porcelain=v1", "-z", "--untracked-files=all"], {
@@ -212,6 +216,7 @@ type LoopContext = {
   maxLoops: number;
   checkCmd: string;
   checkDisabled: boolean;
+  autoReviewEnabled: boolean;
   canAutoCommit: boolean;
   loopStart: number;
 };
@@ -294,7 +299,7 @@ async function runIteration(ctx: LoopContext, state: LoopState): Promise<Iterati
   if (updateTaskAfterVerification(ctx.target, currentTask, code)) {
     updateNextStepFromTasks(ctx.target);
     const committed = await autoCommit(ctx.target, state.loop, ctx.canAutoCommit);
-    if (committed) {
+    if (shouldRunAutoReview(committed, ctx.autoReviewEnabled)) {
       const reviewPassed = await runAutoReviewFeedback(
         ctx.provider,
         ctx.target,
@@ -325,7 +330,8 @@ export async function mainLoop(
   maxLoops: number,
   checkCmd: string,
   dryRun: boolean,
-  checkDisabled = false
+  checkDisabled = false,
+  autoReviewEnabled = false
 ): Promise<number> {
   ensureTemplates(target);
 
@@ -342,6 +348,7 @@ export async function mainLoop(
     maxLoops,
     checkCmd,
     checkDisabled,
+    autoReviewEnabled,
     canAutoCommit: isGitRepo(target),
     loopStart: Date.now(),
   };

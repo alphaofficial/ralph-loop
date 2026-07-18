@@ -116,6 +116,7 @@ Options:
   --max-loops N         Max consecutive failed iterations (default: 3)
   --check CMD           Override verification command
   --no-check            Disable runner-managed verification
+  --auto-review         Enable runner-managed auto review after commit
   --dry-run             Show prompt without invoking
   -i, --interactive     With gen, dynamically ask clarifying questions before writing files
   -h, --help            Show this help
@@ -132,6 +133,7 @@ function parseArgs() {
   let maxLoops = parseInt(process.env.RALPH_MAX_LOOPS ?? "3", 10);
   let checkCmd = "";
   let noCheck = false;
+  let autoReview = false;
   let dryRun = false;
 
   // detect if invoked as ralph-claude, ralph-codex, etc.
@@ -181,6 +183,9 @@ function parseArgs() {
       case "--no-check":
         noCheck = true;
         break;
+      case "--auto-review":
+        autoReview = true;
+        break;
       case "--dry-run":
         dryRun = true;
         break;
@@ -204,7 +209,7 @@ function parseArgs() {
     process.exit(1);
   }
 
-  return { command, target, maxLoops, checkCmd, noCheck, dryRun };
+  return { command, target, maxLoops, checkCmd, noCheck, autoReview, dryRun };
 }
 
 // Signal handling for clean exit
@@ -221,7 +226,7 @@ process.on("SIGTERM", () => {
 process.on("unhandledRejection", () => {});
 
 async function main() {
-  const { command, target, maxLoops, checkCmd, noCheck, dryRun } = parseArgs();
+  const { command, target, maxLoops, checkCmd, noCheck, autoReview, dryRun } = parseArgs();
 
   if (!command || command === "help") {
     console.log(USAGE);
@@ -308,7 +313,7 @@ async function main() {
 
   const provider = command as Provider;
   const check = noCheck ? "" : checkCmd || autoDetectCheck(target);
-  const code = await mainLoop(provider, target, maxLoops, check, dryRun, noCheck);
+  const code = await mainLoop(provider, target, maxLoops, check, dryRun, noCheck, autoReview);
   process.exit(code);
 }
 
