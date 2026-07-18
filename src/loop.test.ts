@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
-import { gitStatusEntries, handleStaticGuardFailure, makePrompt, updateTaskAfterVerification } from "./loop";
+import { gitStatusEntries, handleStaticGuardFailure, makePrompt, shouldRunAutoReview, updateTaskAfterVerification } from "./loop";
 import { makeAutoReviewFeedbackPrompt } from "./prompts";
 import { getTask } from "./task-state";
 import { PRD_FILE, STATUS_FILE, TASKS_FILE, ensureTemplates, projectFilePath } from "./files";
@@ -121,6 +121,14 @@ describe("gitStatusEntries", () => {
     } finally {
       rmSync(target, { recursive: true, force: true });
     }
+  });
+});
+
+describe("shouldRunAutoReview", () => {
+  test("requires both an auto-commit and explicit auto review opt in", () => {
+    expect(shouldRunAutoReview(true, true)).toBe(true);
+    expect(shouldRunAutoReview(true, false)).toBe(false);
+    expect(shouldRunAutoReview(false, true)).toBe(false);
   });
 });
 

@@ -78,7 +78,7 @@ while (unchecked tasks in .ralph/TASKS.md) {
   agent implements the selected task without editing .ralph/TASKS.md
   run static guardrails to ensure agent follows spec
   run verification command
-  run auto review gate
+  run auto review gate if enabled
 }
 ```
 
@@ -116,6 +116,14 @@ ralph claude --no-check
 ```
 
 `--no-check` suppresses auto-detection and records verification as skipped. It cannot be combined with `--check`.
+
+## Auto review
+Ralph does not run the auto review gate unless you opt in:
+```bash
+ralph claude --auto-review
+```
+
+`--auto-review` enables runner-managed review feedback after a successful auto-commit.
 
 ## Max loops
 Default is 3.
